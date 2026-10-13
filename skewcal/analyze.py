@@ -685,7 +685,7 @@ def camera_distance(H_s2i, f, c):
 
 
 def rectify_phone(g, exif, focal_px=None, span_x=None, span_y=None, ppmm=15.0,
-                  fit_distortion=True):
+                  fit_distortion=True, screen_bar=None):
     h_img, w_img = g.shape
     g8 = np.clip(g * 255, 0, 255).astype(np.uint8)
     dic = cv2.aruco.getPredefinedDictionary(sheet.ARUCO_DICT)
@@ -699,7 +699,9 @@ def rectify_phone(g, exif, focal_px=None, span_x=None, span_y=None, ppmm=15.0,
                            "Make sure the whole sheet is in frame, in focus and evenly lit.")
     layout = sheet.layout_of(ids)
     if layout == "screen":
-        kx = ky = 1.0                 # a screen's pixel pitch is exact; spans are a paper check
+        # pixel pitch is uniform, but published ppi is rounded: the on-screen 100 mm
+        # bar measured with calipers gives the true size
+        kx = ky = (screen_bar / 100.0) if screen_bar else 1.0
     else:
         kx = (span_x / sheet.SPAN_X_NOMINAL) if span_x else 1.0
         ky = (span_y / sheet.SPAN_Y_NOMINAL) if span_y else 1.0
@@ -772,9 +774,10 @@ def rectify_phone(g, exif, focal_px=None, span_x=None, span_y=None, ppmm=15.0,
 
 
 def analyze_photo(path, spec, focal_px=None, span_x=None, span_y=None, hole_height=None,
-                  annotate_path=None, fit_distortion=True, correct_warp="auto", **kw):
+                  annotate_path=None, fit_distortion=True, correct_warp="auto", screen_bar=None, **kw):
     g, _, exif = load_gray(path)
-    rect, s, meta = rectify_phone(g, exif, focal_px, span_x, span_y, fit_distortion=fit_distortion)
+    rect, s, meta = rectify_phone(g, exif, focal_px, span_x, span_y, fit_distortion=fit_distortion,
+                                  screen_bar=screen_bar)
     Wh = meta["window_half"]
     to_mm = lambda q: np.c_[q[:, 0] / s - Wh, Wh - q[:, 1] / s] if len(q) else q
     h = spec.feature_height if hole_height is None else hole_height

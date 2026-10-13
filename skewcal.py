@@ -100,9 +100,9 @@ def format_report(results, names, combined, spec, mode, script_path=None):
         P("         squareness error is NOT cancelled. Add an image with the plate turned 90 deg.")
     sx, sy = combined["scale_x"], combined["scale_y"]
     P(f"Scale:     X {100*sx:.3f}%   Y {100*sy:.3f}%   (hole-centre spacing, measured/nominal)")
-    if mode == "photo" and results[0].get("reference") == "screen":
-        P("           (tablet reference: scale relies on the screen's published ppi and an assumed")
-        P("            0.7 mm cover glass; a scan of the same plate is the check)")
+    if mode == "photo" and results[0].get("reference") == "screen" and results[0].get("sheet_scale", (1, 1))[0] == 1:
+        P("           (tablet reference: scale assumes the screen's published ppi is exact, often only")
+        P("            to ~0.3%; measure its 100 mm bar with calipers and pass --screen-bar)")
     elif mode == "photo" and tuple(results[0].get("sheet_scale", (1.0, 1.0))) == (1.0, 1.0):
         P("           (absolute scale assumes the sheet printed at exactly 100%; pass --span-x/--span-y")
         P("            with your ruler/caliper measurements to make it exact)")
@@ -146,7 +146,8 @@ def _run(a, mode):
                 r = an.analyze_photo(p, spec, focal_px=a.focal_px, span_x=a.span_x, span_y=a.span_y,
                                      hole_height=a.hole_height, annotate_path=ann,
                                      fit_distortion=not a.no_distortion,
-                                     correct_warp=False if a.no_warp else True if a.warp else "auto")
+                                     correct_warp=False if a.no_warp else True if a.warp else "auto",
+                                     screen_bar=a.screen_bar)
         except RuntimeError as e:
             print(f"  {os.path.basename(p)}: FAILED - {e}", file=sys.stderr)
             continue
@@ -190,6 +191,8 @@ def main(argv=None):
         else:
             p.add_argument("--span-x", type=float, help=f"measured top-row span (nominal {sheet_mod.SPAN_X_NOMINAL:.0f} mm)")
             p.add_argument("--span-y", type=float, help=f"measured left-column span (nominal {sheet_mod.SPAN_Y_NOMINAL:.0f} mm)")
+            p.add_argument("--screen-bar", type=float,
+                           help="tablet reference: measured length of its on-screen 100 mm bar (mm)")
             p.add_argument("--focal-px", type=float, help="focal length in pixels (default: from EXIF)")
             p.add_argument("--hole-height", type=float, help="effective feature height above sheet (default thickness/2)")
             p.add_argument("--no-distortion", action="store_true", help="skip lens-distortion fit")

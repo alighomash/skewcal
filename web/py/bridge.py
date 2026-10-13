@@ -57,7 +57,8 @@ def analyze_one(mode, path, name, opts_json, overlay_dir="/tmp/out"):
             if o.get("focal35") and o.get("width") and o.get("height"):
                 focal_px = float(o["focal35"]) * math.hypot(o["width"], o["height"]) / 43.2666
             r = an.analyze_photo(path, SPEC, focal_px=focal_px, span_x=o.get("span_x") or None,
-                                 span_y=o.get("span_y") or None, annotate_path=ann,
+                                 span_y=o.get("span_y") or None, screen_bar=o.get("screen_bar") or None,
+                                 annotate_path=ann,
                                  fit_distortion=o.get("distortion", True),
                                  correct_warp=o.get("warp", "auto"), details=True, annotate_crop=True)
             if focal_px:

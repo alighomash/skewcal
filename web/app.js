@@ -250,6 +250,8 @@ async function runAnalysis() {
     const sx = parseFloat($("#optSpanX").value), sy = parseFloat($("#optSpanY").value);
     if (sx > 0) opts.span_x = sx;
     if (sy > 0) opts.span_y = sy;
+    const bar = parseFloat($("#optBar").value);
+    if (bar > 0) opts.screen_bar = bar;
     opts.warp = { auto: "auto", on: true, off: false }[$("#optWarp").value];
   }
   const overlays = {};
@@ -432,8 +434,10 @@ function renderResults() {
       <div class="card">
         <header><h3>Scale</h3><span class="note">hole spacing, measured ÷ nominal</span></header>
         <div id="scaleBars"></div>
-        <p class="note" style="margin-top:10px">${R.mode === "photo" && okImgs[0].result.reference !== "screen" && !(okImgs[0].result.sheet_scale && (okImgs[0].result.sheet_scale[0] !== 1 || okImgs[0].result.sheet_scale[1] !== 1))
-          ? "Assumes the reference sheet printed at exactly 100%. Enter your measured sheet spans for exact scale."
+        <p class="note" style="margin-top:10px">${R.mode === "photo" && !(okImgs[0].result.sheet_scale && (okImgs[0].result.sheet_scale[0] !== 1 || okImgs[0].result.sheet_scale[1] !== 1))
+          ? (okImgs[0].result.reference === "screen"
+            ? "Assumes the tablet's published ppi is exact, which is often true only to about 0.3%. Measure the on-screen 100 mm bar with calipers and enter it for exact scale."
+            : "Assumes the reference sheet printed at exactly 100%. Enter your measured sheet spans for exact scale.")
           : `To compensate in the slicer, scale objects to X ${fx(100 / c.scale_x, 2)}% and Y ${fx(100 / c.scale_y, 2)}%. Only worth it for tight fits.`}</p>
       </div>
       <div class="card">

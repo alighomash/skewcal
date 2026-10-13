@@ -325,7 +325,7 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
           <label class="row note" for="tabDark" style="align-self:end"><input type="checkbox" id="tabDark"> Dark window, for a light-coloured plate</label>
         </div>
         <div class="row"><button class="btn primary" id="tabShow">Show reference on this screen</button><span class="note" id="tabNote"></span></div>
-        <p class="note">Turn brightness up and auto-lock off, and don't zoom the page. Wipe the screen first: dust under the plate lifts it. A 100 mm bar is drawn beside the ring if you want to check the scale with calipers.</p>
+        <p class="note">Turn brightness up and auto-lock off, and don't zoom the page. Wipe the screen first: dust under the plate lifts it. A 100 mm bar is drawn beside the ring. For exact scale, measure it with calipers and enter the length when you measure.</p>
       </div>
     </div>
   </section>
@@ -361,7 +361,8 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
           <div class="field"><label for="optWarp">Bowed-plate correction</label>
             <select id="optWarp"><option value="auto">Automatic: only if the plate looks bowed</option><option value="on">Always on</option><option value="off">Off: the plate is flat</option></select>
           </div>
-          <p class="note">Spans are only for the paper sheet. A tablet reference is already exact.</p>
+          <div class="field"><label for="optBar">Tablet's 100 mm bar, measured with calipers (mm)</label><input id="optBar" type="number" step="0.05" placeholder="100.00"></div>
+          <p class="note">Spans are for the paper sheet; the bar is for the tablet reference. Published screen ppi is rounded, so the bar can be off by up to about 0.3%.</p>
         </div>
         <button class="btn primary" id="runBtn" disabled>Measure</button>
         <div class="progress" id="progress" hidden><div></div></div>
