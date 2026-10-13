@@ -28,11 +28,13 @@ The G-code post-processor (`skew_gcode.py`) uses only the Python standard librar
 
 ## 2. Print the test plate
 
-`skewcal_plate.stl` is included (114 × 114 × 1.6 mm, 4 mm holes on a 12.5 mm grid). To regenerate it or change its size:
+`skewcal_plate.stl` is included (114 × 114 × 1.6 mm, 4 mm holes on a 12.5 mm grid). Its holes are **thin-rim** holes: 4 mm only for the bottom 0.6 mm, then widening as a cone to 5.6 mm at the top. The visible hole edge is a thin first-layer rim, so lighting and viewing angle barely move it. In tests this halved the per-hole error in phone photos, and scans were no worse. To regenerate it or change its size:
 
 ```bash
 .venv/bin/python skewcal.py plate -o skewcal_plate.stl
 ```
+
+`skewcal_plate_standard.stl` (`plate --standard`) is the original plate with straight holes. To analyse it, pass `--plate skewcal_plate_standard.json`; otherwise the thin-rim plate is assumed. Plate `.json` files saved before thin-rim plates existed are still read as standard plates.
 
 - **Do not rotate or mirror it in the slicer.** The small marker holes tell the software which way is X and which is Y on the plate. That only matches the printer's X and Y if the plate is printed exactly as exported. The origin hole is at the front left.
 - Use your normal settings. Leave out a brim: it would make the edges hard to separate from the background.
@@ -54,7 +56,7 @@ The G-code post-processor (`skew_gcode.py`) uses only the Python standard librar
 
 **Best setup:** the thin-rim plate, a tablet as the reference, the 2× lens from 40–50 cm, and four photos with the plate turned 90° each time.
 
-- **Thin-rim plate (v2).** `skewcal_plate_thinrim.stl`, or `skewcal.py plate --thin-rim`. Its holes are 4 mm only in the bottom 0.6 mm and widen to 5.6 mm at the top. The visible edge is then a thin first-layer rim, so lighting and viewing angle barely move it. Lay it first-layer side down, and analyse with `--plate skewcal_plate_thinrim.json`.
+- **Thin-rim plate** (the default `skewcal_plate.stl`). Lay it first-layer side down. If it lies upside down, the analysis notices (the hole pattern appears mirrored) and corrects for the rims being near the top.
 - **Tablet reference.** In the web app, open *Scan or photograph → Tablet as the reference* on an iPad (11-inch or larger). It draws a compact marker ring full screen at exact size. Pixel pitch is exact, so no ruler check is needed, and glass is flatter than paper. The analysis recognises the screen markers automatically and allows for the cover glass the plate lies on. Apple's published ppi is rounded, so absolute scale can be off by up to about 0.3%. Measure the on-screen 100 mm bar with calipers and pass it as `--screen-bar` (or enter it in the app). The iPad Pro 11-inch (2018–2022) is already calibrated in the app at 264.8 ppi.
 - **Four photos** (plate at 0°, 90°, 180°, 270°). The report counts positions, and with more than two images the uncertainty comes from the real scatter.
 - **Bowed-plate correction** is automatic. It is used only when the photos show a significant bow (more than 0.5 mm, and more than 3× its uncertainty), because on a flat plate it only adds noise. Use `--warp` or `--no-warp` to force it.

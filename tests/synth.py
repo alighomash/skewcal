@@ -90,13 +90,17 @@ def look_at(C, T):
 
 
 def render_photo(path, spec, M, f=3000.0, size=(3000, 2250), cam=(15, -40, 330), target=(0, 0, 0),
-                 plate_rot=0.0, plate_off=(0, 0), h=0.8, k1=0.0, paper=np.eye(2),
+                 plate_rot=0.0, plate_off=(0, 0), h=None, k1=0.0, paper=np.eye(2),
                  dark_plate=True, dark_window=False, noise=0.012, blur=1.0, seed=0, jpeg=92,
                  marker_scale=1.0, warp=0.0, glare=0.0, glare_period=220.0, glare_angle=40.0,
-                 layout="paper"):
+                 layout="paper", flip=False):
     """warp: height (mm) of the plate corners above its centre (a cupped plate).
     glare: peak brightness added to the plate surface in diagonal bands, like a lamp
-    reflecting off the shiny top-layer lines (holes and paper are not affected)."""
+    reflecting off the shiny top-layer lines (holes and paper are not affected).
+    h: height of the hole edges above the reference (default: the plate's feature height).
+    flip: the plate lies first-layer side up (mirrored, as seen from above)."""
+    if h is None:
+        h = spec.feature_height(upside_down=flip)
     Wd, Hd = size
     c = np.array([(Wd - 1) / 2, (Hd - 1) / 2])
     K = np.array([[f, 0, c[0]], [0, f, c[1]], [0, 0, 1]])
@@ -134,6 +138,9 @@ def render_photo(path, spec, M, f=3000.0, size=(3000, 2250), cam=(15, -40, 330),
                     # slightly overlap cells to avoid AA seams
                     _fill(U, proj(q @ paper.T), ink_v)
     outline, holes = plate_polys(spec, M, marker_scale=marker_scale)
+    if flip:
+        F = np.diag([-1.0, 1.0])
+        outline, holes = outline @ F, [hp @ F for hp in holes]
     Rm = rot2(plate_rot)
     off = np.array(plate_off, float)
     pv = 40 if dark_plate else 200

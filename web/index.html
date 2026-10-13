@@ -250,8 +250,8 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
       <div class="card stack">
         <header><h2>Test plate</h2>
           <div class="seg" role="group" aria-label="Plate version">
-            <button type="button" id="plateStd" aria-pressed="true">Standard</button>
-            <button type="button" id="plateThin" aria-pressed="false">Thin-rim <span class="badge-rec">new</span></button>
+            <button type="button" id="plateThin" aria-pressed="true">Thin-rim</button>
+            <button type="button" id="plateStd" aria-pressed="false">Standard</button>
           </div>
         </header>
         <div id="plateDrawing"></div>
@@ -296,7 +296,7 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
         <header><h2>Flatbed scanner</h2><span class="badge-rec">Most accurate</span></header>
         <div id="turnDrawing"></div>
         <ol class="steps">
-          <li>Lay the plate on the glass near the middle. A thin-rim plate goes first-layer side down; a standard plate either way.</li>
+          <li>Lay the plate on the glass near the middle, either side down.</li>
           <li>Scan at <strong>600 dpi</strong>, greyscale or colour. Save as <strong>TIFF or PNG</strong> so the resolution is stored in the file.</li>
           <li>Turn the plate 90° on the glass and scan again. Don't rotate the image afterwards; the plate itself has to move.</li>
           <li>Optional: turn it twice more (180°, 270°) for four scans. The scatter between them then shows the real uncertainty.</li>
@@ -348,7 +348,7 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
         </label>
         <ul class="files" id="fileList"></ul>
         <div class="field"><label for="optPlate">Plate</label>
-          <select id="optPlate"><option value="standard">Standard (straight holes)</option><option value="thinrim">Thin-rim (v2)</option></select>
+          <select id="optPlate"><option value="thinrim">Thin-rim (default)</option><option value="standard">Standard (straight holes)</option></select>
         </div>
         <div id="scanOpts" class="fields">
           <div class="field"><label for="optDpi">Scan dpi (if not in file)</label><input id="optDpi" type="number" min="100" max="4800" step="1" placeholder="auto"></div>

@@ -6,5 +6,7 @@
   "marker_d": 2.0,
   "y_pair_sep": 3.5,
   "margin": 5.0,
-  "thickness": 1.6
+  "thickness": 1.6,
+  "rim": 0.6,
+  "top_d": 5.6
 }

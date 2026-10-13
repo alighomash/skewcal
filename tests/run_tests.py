@@ -86,14 +86,16 @@ res, _ = run(["photo", p1, p2, "--out", OUT, "--no-annotate",
               "--span-x", f"{174*1.003:.2f}", "--span-y", f"{234*0.998:.2f}"])
 check("phone, focal unknown", res, th3, sx3, sy3, 0.02, 1.5e-3)
 
-# ---- 4. phone, light plate on the dark-window sheet --------------------------------
+# ---- 4. phone, light standard (straight-hole) plate on the dark-window sheet ------------
+std = PlateSpec.standard()
+js_std = os.path.join(OUT, "plate_standard.json"); std.to_json(js_std)
 p3 = os.path.join(OUT, "photo_3.jpg"); p4 = os.path.join(OUT, "photo_4.jpg")
-synth.render_photo(p3, spec, M3, cam=(0, -30, 300), plate_rot=-2, dark_plate=False, dark_window=True,
+synth.render_photo(p3, std, M3, cam=(0, -30, 300), plate_rot=-2, dark_plate=False, dark_window=True,
                    k1=0.02, seed=7)
-synth.render_photo(p4, spec, M3, cam=(10, -20, 300), plate_rot=88, dark_plate=False, dark_window=True,
+synth.render_photo(p4, std, M3, cam=(10, -20, 300), plate_rot=88, dark_plate=False, dark_window=True,
                    k1=0.02, seed=8)
-res, _ = run(["photo", p3, p4, "--out", OUT, "--no-annotate", "--focal-px", "3000"])
-check("phone, light plate / dark window", res, th3, sx3, sy3, 0.02, 8e-4)
+res, _ = run(["photo", p3, p4, "--plate", js_std, "--out", OUT, "--no-annotate", "--focal-px", "3000"])
+check("phone, standard light plate / dark window", res, th3, sx3, sy3, 0.02, 8e-4)
 
 # ---- 5. phone, marker holes printed mostly closed + cupped plate ---------------------
 p5 = os.path.join(OUT, "photo_5.jpg"); p6 = os.path.join(OUT, "photo_6.jpg")
@@ -122,27 +124,45 @@ check("phone, glare bands on the plate", res, th3, sx3, sy3, 0.02, 1.5e-3)
 # ---- 7. phone, reference shown on a tablet screen (exact scale, plate on cover glass) ---------
 from skewcal import sheet  # noqa: E402
 p9 = os.path.join(OUT, "photo_9.jpg"); p10 = os.path.join(OUT, "photo_10.jpg")
-hs = spec.feature_height + sheet.SCREEN_GLASS_MM
+hs = spec.feature_height() + sheet.SCREEN_GLASS_MM
 synth.render_photo(p9, spec, M3, cam=(10, -35, 300), plate_rot=1.0, k1=-0.02, layout="screen", h=hs, seed=13)
 synth.render_photo(p10, spec, M3, cam=(-10, -30, 290), plate_rot=-89.0, k1=-0.02, layout="screen", h=hs, seed=14)
 res, _ = run(["photo", p9, p10, "--out", OUT, "--no-annotate", "--focal-px", "3000"])
 check("phone, tablet-screen reference", res, th3, sx3, sy3, 0.02, 8e-4)
 
-# ---- 8. thin-rim (v2) plate, four photos at 0/90/180/270 deg -------------------------------
-spec2 = PlateSpec(rim=0.6, top_d=5.6)
+# ---- 8. four photos at 0/90/180/270 deg ---------------------------------------------
+spec2 = PlateSpec()
 js2 = os.path.join(OUT, "plate_thinrim.json"); spec2.to_json(js2)
 quad = []
 for k, (rot, cam) in enumerate([(0.5, (15, -40, 320)), (90.5, (-20, -35, 330)),
                                 (180.5, (10, -45, 310)), (270.5, (-15, -30, 325))]):
     pq = os.path.join(OUT, f"photo_q{k}.jpg")
     synth.render_photo(pq, spec2, M3, cam=cam, plate_rot=rot, k1=-0.03, paper=paper,
-                       h=spec2.feature_height, seed=20 + k)
+                       seed=20 + k)
     quad.append(pq)
 res, txt = run(["photo", *quad, "--plate", js2, "--out", OUT, "--no-annotate", "--focal-px", "3000",
                 "--span-x", f"{174*1.003:.2f}", "--span-y", f"{234*0.998:.2f}"])
-check("phone, thin-rim plate, four photos", res, th3, sx3, sy3, 0.02, 8e-4)
+check("phone, four photos", res, th3, sx3, sy3, 0.02, 8e-4)
 if "2 with the plate at 0/180" not in txt:
     print("FAIL  report should count plate positions"); failures.append("positions line")
+
+# ---- 9. thin-rim plate lying upside down (first layer up) on the tablet --------------------
+p11 = os.path.join(OUT, "photo_11.jpg"); p12 = os.path.join(OUT, "photo_12.jpg")
+for pth, rot, cam, sd in [(p11, 0.5, (10, -35, 300), 30), (p12, 90.5, (-10, -30, 290), 31)]:
+    synth.render_photo(pth, spec, M3, cam=cam, plate_rot=rot, k1=-0.02, layout="screen", flip=True,
+                       h=spec.feature_height(upside_down=True) + sheet.SCREEN_GLASS_MM, seed=sd)
+res, _ = run(["photo", p11, p12, "--out", OUT, "--no-annotate", "--focal-px", "3000"])
+check("phone, thin-rim plate upside down on tablet", res, th3, sx3, sy3, 0.02, 8e-4)
+
+# ---- 10. plate .json files from before thin-rim plates still mean straight holes ----------
+import json  # noqa: E402
+old_js = os.path.join(OUT, "plate_old.json")
+json.dump({"skewcal_plate": 1, "n": 9, "pitch": 12.5, "hole_d": 4.0, "marker_d": 2.0,
+           "y_pair_sep": 3.5, "margin": 5.0, "thickness": 1.6}, open(old_js, "w"))
+if PlateSpec.from_json(old_js).thin_rim:
+    print("FAIL  old plate .json read as thin-rim"); failures.append("old json")
+else:
+    print("PASS  old plate .json (no rim field) is read as the standard plate")
 
 print()
 print("ALL PASSED" if not failures else f"FAILED: {failures}")

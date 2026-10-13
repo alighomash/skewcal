@@ -14,8 +14,8 @@ import numpy as np
 from skewcal import analyze as an
 from skewcal.plate import PlateSpec
 
-PLATES = {"standard": PlateSpec(), "thinrim": PlateSpec(rim=0.6, top_d=5.6)}
-SPEC = PLATES["standard"]
+PLATES = {"thinrim": PlateSpec(), "standard": PlateSpec.standard()}
+SPEC = PLATES["thinrim"]
 _results = []          # [(name, result dict | None, error | None)]
 
 
@@ -44,7 +44,7 @@ def analyze_one(mode, path, name, opts_json, overlay_dir="/tmp/out"):
     """Analyse one image. opts: plate, dpi, span_x, span_y, warp ("auto"|true|false), focal35."""
     global SPEC
     o = json.loads(opts_json or "{}")
-    SPEC = PLATES.get(o.get("plate") or "standard", PLATES["standard"])
+    SPEC = PLATES.get(o.get("plate") or "thinrim", PLATES["thinrim"])
     os.makedirs(overlay_dir, exist_ok=True)
     stem = os.path.splitext(os.path.basename(name))[0]
     ann = os.path.join(overlay_dir, stem + "_skewcal.jpg")

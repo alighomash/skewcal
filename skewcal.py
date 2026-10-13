@@ -20,10 +20,11 @@ from skewcal import sheet as sheet_mod
 
 
 def cmd_plate(a):
-    rim, top_d = a.rim, a.top_d
-    if a.thin_rim:
-        rim = rim or 0.6
-        top_d = top_d or a.hole_d + 1.6
+    if a.standard:
+        rim = top_d = 0.0
+    else:
+        rim = a.rim or 0.6
+        top_d = a.top_d or a.hole_d + 1.6
     spec = PlateSpec(n=a.n, pitch=a.pitch, hole_d=a.hole_d, marker_d=a.marker_d,
                      thickness=a.thickness, rim=rim, top_d=top_d)
     walls = spec.validate()
@@ -170,10 +171,11 @@ def main(argv=None):
     p.add_argument("--hole-d", type=float, default=4.0)
     p.add_argument("--marker-d", type=float, default=2.0)
     p.add_argument("--thickness", type=float, default=1.6)
-    p.add_argument("--thin-rim", action="store_true",
-                   help="v2 plate: thin first-layer hole rims (rim 0.6 mm, cone to hole_d + 1.6 mm)")
-    p.add_argument("--rim", type=float, default=0.0, help="thin-rim height in mm (with --thin-rim)")
-    p.add_argument("--top-d", type=float, default=0.0, help="cone diameter at the top surface")
+    p.add_argument("--standard", action="store_true",
+                   help="straight holes (the original plate) instead of thin-rim holes")
+    p.add_argument("--thin-rim", action="store_true", help=argparse.SUPPRESS)   # now the default
+    p.add_argument("--rim", type=float, default=0.0, help="thin-rim height in mm (default 0.6)")
+    p.add_argument("--top-d", type=float, default=0.0, help="cone diameter at the top surface (default hole_d + 1.6)")
 
     p = sub.add_parser("sheet", help="generate the phone reference sheet (PDF)")
     p.add_argument("--page", choices=["letter", "a4"], default="letter")
@@ -183,7 +185,8 @@ def main(argv=None):
     for name in ("scan", "photo"):
         p = sub.add_parser(name, help=f"analyse {name}s")
         p.add_argument("images", nargs="+")
-        p.add_argument("--plate", help="plate .json written by 'plate' (if not default)")
+        p.add_argument("--plate", help="plate .json written by 'plate' (default: thin-rim plate; "
+                                       "skewcal_plate_standard.json for the straight-hole plate)")
         p.add_argument("--out", help="output folder (default: next to the first image)")
         p.add_argument("--no-annotate", action="store_true")
         if name == "scan":

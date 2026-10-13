@@ -780,12 +780,21 @@ def analyze_photo(path, spec, focal_px=None, span_x=None, span_y=None, hole_heig
                                   screen_bar=screen_bar)
     Wh = meta["window_half"]
     to_mm = lambda q: np.c_[q[:, 0] / s - Wh, Wh - q[:, 1] / s] if len(q) else q
-    h = spec.feature_height if hole_height is None else hole_height
-    h += meta.get("ref_offset_mm", 0.0)    # e.g. a screen's cover glass under the plate
+    off = meta.get("ref_offset_mm", 0.0)    # e.g. a screen's cover glass under the plate
     D = meta["camera_distance_mm"]
+    h = (spec.feature_height() if hole_height is None else hole_height) + off
     corr = (D - h) / D            # features at height h appear enlarged by D/(D-h)
     r = analyze_metric(rect, s, to_mm, spec, scale_corr=corr, annotate_path=annotate_path,
                        warp=correct_warp, camera_distance=D, **kw)
+    # Seen from above, a mirrored plate is lying first-layer side up. On a thin-rim
+    # plate that puts the rims near the top, so redo the parallax correction.
+    r["upside_down"] = bool(r["mirrored"])
+    if r["mirrored"] and hole_height is None and spec.thin_rim:
+        h2 = spec.feature_height(upside_down=True) + off
+        k = ((D - h2) / D) / corr
+        r["scale_x"] *= k
+        r["scale_y"] *= k
+        corr = (D - h2) / D
     r.update(mode="photo", parallax_corr=corr, **meta)
     return r
 

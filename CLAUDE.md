@@ -47,7 +47,11 @@ The pipeline, mostly in `skewcal/analyze.py`:
 - `PlateSpec` (in `plate.py`) is the single source of plate geometry. `skewcal_plate.json` must match the printed STL, and the analysis loads a custom one via `--plate`. The STL must be printed unrotated, with the origin hole at front-left.
 - Sheet constants (`WINDOW_HALF`, `SPAN_X_NOMINAL`=174, `SPAN_Y_NOMINAL`=234, `ARUCO_DICT`) live in `sheet.py`. Changing them invalidates the PDFs already printed.
 - There are two photo references, the paper sheet (marker ids 0–58) and the tablet screen (ids 59–98, `SCREEN_*` in `sheet.py`). `rectify_phone` picks one from the detected ids. The screen layout is drawn by `web/app.js` from `web/screen_markers.json`, which `build_web.py` exports. Change both together.
-- Thin-rim plate: `PlateSpec(rim, top_d)`. `feature_height` (rim/2, or thickness/2) is the parallax height; the screen reference adds `SCREEN_GLASS_MM`.
+- **Thin-rim plate.** `PlateSpec()` is the default thin-rim plate (rim 0.6, top_d 5.6); `PlateSpec.standard()` has straight holes.
+  - `from_json` treats files without a `rim` field as standard, which keeps old plate files valid.
+  - `feature_height(upside_down)` is the parallax height. The screen reference adds `SCREEN_GLASS_MM`.
+  - In photo mode a mirrored plate is lying first-layer side up. `analyze_photo` then recomputes the parallax correction (`upside_down` in the result).
+  - The web samples are standard-plate scans (`plate` in `samples/index.json`).
 - Photo `correct_warp` defaults to `"auto"`: the bow model is kept only if the corner bow is > `BOW_MIN_MM` and > 3σ. The 3 mm "cup" seen in 1× photos at 22 cm was lens distortion, not a real bow.
 - Hole detection is glare-robust. The plate region is closed at ~2 px/mm, candidates come from a local-contrast map, missing grid positions are predicted from the lattice, and centres come from an edge circle fit with per-ray thresholds (`_edge_circle`).
 - Report quality signals:

@@ -99,15 +99,15 @@ def bundle_python():
 def copy_assets():
     out = os.path.join(WEB, "assets")
     os.makedirs(out, exist_ok=True)
-    for name in ["skewcal_plate.stl", "skewcal_plate.json", "skewcal_plate_thinrim.stl",
-                 "skewcal_plate_thinrim.json", "skew_gcode.py",
+    for name in ["skewcal_plate.stl", "skewcal_plate.json", "skewcal_plate_standard.stl",
+                 "skewcal_plate_standard.json", "skew_gcode.py",
                  "skewcal_reference_letter.pdf", "skewcal_reference_letter_dark.pdf",
                  "skewcal_reference_a4.pdf", "skewcal_reference_a4_dark.pdf"]:
         shutil.copy2(os.path.join(ROOT, name), out)
     # Artifact downloads only allow common extensions, so STL and .py ship zipped too
     import zipfile
     for zname, members in [("skewcal_plate.zip", ["skewcal_plate.stl", "skewcal_plate.json"]),
-                           ("skewcal_plate_thinrim.zip", ["skewcal_plate_thinrim.stl", "skewcal_plate_thinrim.json"]),
+                           ("skewcal_plate_standard.zip", ["skewcal_plate_standard.stl", "skewcal_plate_standard.json"]),
                            ("skew_gcode.zip", ["skew_gcode.py"])]:
         with zipfile.ZipFile(os.path.join(out, zname), "w", zipfile.ZIP_DEFLATED) as z:
             for m in members:
@@ -189,7 +189,7 @@ def make_samples():
             name = f"{key}_{k + 1}.jpg"
             Image.fromarray(g8).save(os.path.join(out, name), quality=92, dpi=(SAMPLE_DPI, SAMPLE_DPI))
             names.append(name)
-        index.append(dict(key=key, title=title, mode="scan", files=names))
+        index.append(dict(key=key, title=title, mode="scan", plate="standard", files=names))
         print(f"sample {key}: {names}")
     with open(os.path.join(out, "index.json"), "w") as f:
         json.dump(index, f, indent=1)
@@ -198,7 +198,8 @@ def make_samples():
     first = index[0]
     bridge.reset()
     for name in first["files"]:
-        bridge.analyze_one("scan", os.path.join(out, name), name, "{}", overlay_dir=out)
+        bridge.analyze_one("scan", os.path.join(out, name), name, json.dumps({"plate": first["plate"]}),
+                           overlay_dir=out)
     res = json.loads(bridge.combine_all("scan", "{}"))
     res["sample"] = dict(key=first["key"], title=first["title"])
     for im in res["images"]:

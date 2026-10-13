@@ -242,7 +242,6 @@ async function runAnalysis() {
   setProgress("#progress", 2);
   $("#runNote").textContent = engine.stage === "ready" ? "Measuring…" : "Loading the analysis engine…";
   const opts = { plate: $("#optPlate").value };
-  store.set("plate", opts.plate);
   if (state.mode === "scan") {
     const dpi = parseFloat($("#optDpi").value);
     if (dpi > 0) opts.dpi = dpi;
@@ -344,6 +343,7 @@ $("#samples").addEventListener("click", async (e) => {
     const files = await Promise.all(s.files.map(async (n) => new File([await (await fetch("samples/" + n)).blob()], n, { type: "image/jpeg" })));
     state.files = files.map((f) => ({ name: f.name, file: f, status: "ready" }));
     setMode(s.mode);
+    $("#optPlate").value = s.plate || "thinrim";
     $("#optDpi").value = "";
     renderFiles();
     await runAnalysis();
@@ -613,6 +613,11 @@ function drawChecks(R, imgs) {
     const ref = Math.max(...imgs.map((i) => i.result.ref_rms_um || 0));
     add(ref < 100 ? "ok" : ref < 200 ? "warn" : "bad", `${screen ? "Screen" : "Reference sheet"} fit ${fx(ref, 0)} µm`,
       ref < 100 ? `The ${screen ? "screen's" : "sheet's"} markers fit a flat plane.` : "The reference looks uneven or the photo is soft. Use the 2× lens from 40–50 cm and focus on the plate.");
+    const flipped = imgs.filter((i) => i.result.upside_down).length;
+    if (flipped && $("#optPlate").value === "thinrim") {
+      add("info", `Plate first-layer side up in ${flipped} of ${imgs.length} photos`,
+        "Corrected automatically for the rims being at the top. First-layer side down is slightly better.");
+    }
     const bowed = imgs.filter((i) => i.result.warp_corners_mm);
     if (bowed.length) {
       const warp = Math.max(...bowed.map((i) => Math.max(...i.result.warp_corners_mm.map(Math.abs))));
@@ -792,20 +797,22 @@ function drawGuides() {
     <text x="80" y="${s2 + 34}" text-anchor="middle" class="t-ink">Scan 1</text>
     <text x="300" y="${s2 + 34}" text-anchor="middle" class="t-ink">Scan 2</text></svg>`;
 }
-let plateVersion = "standard";
+let plateVersion = "thinrim";
 function setPlateVersion(v) {
   plateVersion = v;
   $("#plateStd").setAttribute("aria-pressed", String(v === "standard"));
   $("#plateThin").setAttribute("aria-pressed", String(v === "thinrim"));
   $("#plateNote").textContent = v === "thinrim"
-    ? "Holes are 4 mm only in the bottom 0.6 mm, then widen to 5.6 mm at the top. The visible hole edge is a thin first-layer rim, so lighting and viewing angle barely move it. Recommended for phone photos. Scan or photograph it first-layer side down, and choose Thin-rim when you measure."
-    : "Straight 4 mm holes through the plate. Works well with a flatbed scanner.";
+    ? "Holes are 4 mm only in the bottom 0.6 mm, then widen to 5.6 mm at the top. The visible hole edge is a thin first-layer rim, so lighting and viewing angle barely move it. Best for phone photos, as good as the standard plate for scans. Photograph it first-layer side down; upside down is corrected automatically."
+    : "The original plate, with straight 4 mm holes. Choose Standard when you measure it.";
   $("#optPlate").value = v;
 }
-$("#plateStd").addEventListener("click", () => setPlateVersion("standard"));
-$("#plateThin").addEventListener("click", () => setPlateVersion("thinrim"));
+// remember only the visitor's own choice (samples switch the plate temporarily)
+$("#plateStd").addEventListener("click", () => { setPlateVersion("standard"); store.set("plate", "standard"); });
+$("#plateThin").addEventListener("click", () => { setPlateVersion("thinrim"); store.set("plate", "thinrim"); });
+$("#optPlate").addEventListener("change", () => store.set("plate", $("#optPlate").value));
 $("#saveStl").addEventListener("click", () => {
-  const base = plateVersion === "thinrim" ? "skewcal_plate_thinrim" : "skewcal_plate";
+  const base = plateVersion === "thinrim" ? "skewcal_plate" : "skewcal_plate_standard";
   IN_ARTIFACT ? saveAsset(`assets/${base}.zip`, `${base}.zip`) : saveAsset(`assets/${base}.stl`, `${base}.stl`);
 });
 if (!IN_ARTIFACT) $("#stlNote").textContent = "114 × 114 × 1.6 mm, print as exported.";
@@ -922,7 +929,7 @@ document.addEventListener("fullscreenchange", () => setTimeout(drawScreenRef, 10
 // ------------------------------------------------------------------ start
 async function boot() {
   setMode(store.get("mode") === "photo" ? "photo" : "scan");
-  setPlateVersion(store.get("plate") === "thinrim" ? "thinrim" : "standard");
+  setPlateVersion(store.get("plate") === "standard" ? "standard" : "thinrim");
   initTablet();
   drawGuides();
   renderFiles();

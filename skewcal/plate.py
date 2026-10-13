@@ -32,20 +32,28 @@ class PlateSpec:
     y_pair_sep: float = 3.5    # centre-to-centre spacing of the Y-marker pair (mm)
     margin: float = 5.0        # solid border outside the outermost holes (mm)
     thickness: float = 1.6     # plate thickness (mm)
-    # Thin-rim ("v2") holes: the grid holes are hole_d only for the bottom `rim` mm,
-    # then widen as a cone to top_d at the top surface. The visible hole edge is then
-    # a thin first-layer rim, so lighting angle and parallax barely move it.
-    rim: float = 0.0           # 0 = straight holes (v1)
-    top_d: float = 0.0         # top-surface diameter of the cone (0 = hole_d)
+    # Thin-rim holes (the default): the grid holes are hole_d only for the bottom
+    # `rim` mm, then widen as a cone to top_d at the top surface. The visible hole
+    # edge is then a thin first-layer rim, so lighting angle and parallax barely
+    # move it. rim = 0 gives the standard plate with straight holes.
+    rim: float = 0.6
+    top_d: float = 5.6
+
+    @classmethod
+    def standard(cls, **kw) -> "PlateSpec":
+        """The original plate with straight holes."""
+        return cls(rim=0.0, top_d=0.0, **kw)
 
     @property
     def thin_rim(self) -> bool:
         return self.rim > 0 and self.top_d > self.hole_d
 
-    @property
-    def feature_height(self) -> float:
-        """Effective height of the hole edges above the surface the plate lies on."""
-        return self.rim / 2 if self.thin_rim else self.thickness / 2
+    def feature_height(self, upside_down=False) -> float:
+        """Effective height of the hole edges above the surface the plate lies on.
+        A thin-rim plate lying first-layer side up has its rims at the top."""
+        if not self.thin_rim:
+            return self.thickness / 2
+        return self.thickness - self.rim / 2 if upside_down else self.rim / 2
 
     # ---- derived geometry -------------------------------------------------
     @property
@@ -121,6 +129,9 @@ class PlateSpec:
         with open(path) as f:
             d = json.load(f)
         d.pop("skewcal_plate", None)
+        # files written before thin-rim plates existed describe straight holes
+        d.setdefault("rim", 0.0)
+        d.setdefault("top_d", 0.0)
         return cls(**d)
 
 
