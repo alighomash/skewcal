@@ -248,12 +248,19 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
     <p class="lede">Print one flat test plate. Its 81 holes sit on an exact 12.5 mm grid. Skewcal finds the centre of every hole, so hole size, flow and elephant's foot don't affect the result.</p>
     <div class="guide">
       <div class="card stack">
-        <header><h2>Test plate</h2><span class="chip info">Any FDM printer up to 120 mm bed</span></header>
+        <header><h2>Test plate</h2>
+          <div class="seg" role="group" aria-label="Plate version">
+            <button type="button" id="plateStd" aria-pressed="true">Standard</button>
+            <button type="button" id="plateThin" aria-pressed="false">Thin-rim <span class="badge-rec">new</span></button>
+          </div>
+        </header>
         <div id="plateDrawing"></div>
+        <p class="note" id="plateNote"></p>
         <div class="spec">
           <div><div class="label">Size</div><div class="v">114 × 114 × 1.6 mm</div></div>
           <div><div class="label">Holes</div><div class="v">9 × 9, Ø4 mm</div></div>
           <div><div class="label">Pitch</div><div class="v">12.5 mm</div></div>
+          <div><div class="label">Fits</div><div class="v">beds ≥ 120 mm</div></div>
         </div>
         <div class="row">
           <button class="btn primary" id="saveStl">Save plate STL</button>
@@ -289,24 +296,36 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
         <header><h2>Flatbed scanner</h2><span class="badge-rec">Most accurate</span></header>
         <div id="turnDrawing"></div>
         <ol class="steps">
-          <li>Lay the plate on the glass, either side down, near the middle.</li>
+          <li>Lay the plate on the glass near the middle. A thin-rim plate goes first-layer side down; a standard plate either way.</li>
           <li>Scan at <strong>600 dpi</strong>, greyscale or colour. Save as <strong>TIFF or PNG</strong> so the resolution is stored in the file.</li>
           <li>Turn the plate 90° on the glass and scan again. Don't rotate the image afterwards; the plate itself has to move.</li>
-          <li>Open the <strong>Measure</strong> tab, choose Scanner, and add both files.</li>
+          <li>Optional: turn it twice more (180°, 270°) for four scans. The scatter between them then shows the real uncertainty.</li>
+          <li>Open the <strong>Measure</strong> tab, choose Scanner, and add all the scans.</li>
         </ol>
         <p class="note">JPEG scans work too if the file keeps its dpi. Otherwise enter the dpi by hand.</p>
       </div>
       <div class="card stack">
-        <header><h2>Phone camera</h2><span class="chip warn">Scale less reliable</span></header>
+        <header><h2>Phone camera</h2><span class="chip info">Take four photos</span></header>
         <ol class="steps">
-          <li>Print the reference sheet at 100% and tape it to a flat, hard table.</li>
-          <li>Lay the plate inside the window, between the corner ticks.</li>
+          <li>Show the reference on a tablet (below), or print the paper sheet at 100% and tape it to a flat, hard table.</li>
+          <li>Lay the plate inside the window, first-layer side down.</li>
           <li>Shoot from 40–50 cm with the 2× or 3× lens, the whole sheet in frame. The 1× lens up close distorts too much for accurate scale.</li>
           <li>Use soft, even light and no flash. Check that no lamp reflects off the plate as bright bands.</li>
-          <li>Turn the plate 90° on the sheet and take another photo. Turning the phone doesn't count.</li>
+          <li>Turn the plate 90° on the sheet and take another photo. Repeat until you have four: 0°, 90°, 180°, 270°. Turning the phone doesn't count.</li>
           <li>Use the original files. Photos sent through chat apps are shrunk and lose the focal length.</li>
         </ol>
-        <p class="note">The skew angle from photos matches scans closely. Absolute scale depends on the sheet printing at exactly 100% and the plate lying flat, so enter your measured spans when you have them.</p>
+        <p class="note">With paper, absolute scale depends on the sheet printing at exactly 100%. Enter your measured spans for exact scale. A tablet screen needs no measuring.</p>
+      </div>
+      <div class="card stack" style="grid-column:1/-1">
+        <header><h2>Tablet as the reference</h2><span class="badge-rec">Exact scale, perfectly flat</span></header>
+        <p>Open this page on an iPad, lay it flat, and show the marker ring full screen. A screen's pixels are spaced exactly, so scale needs no ruler check, and glass is flatter than paper. The plate lies on the screen; its holes glow from the backlight.</p>
+        <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+          <div class="field"><label for="tabModel">This screen</label><select id="tabModel"></select></div>
+          <div class="field" id="tabPpiWrap" hidden><label for="tabPpi">Pixels per inch</label><input id="tabPpi" type="number" min="100" max="600" step="0.1" placeholder="264"></div>
+          <label class="row note" for="tabDark" style="align-self:end"><input type="checkbox" id="tabDark"> Dark window, for a light-coloured plate</label>
+        </div>
+        <div class="row"><button class="btn primary" id="tabShow">Show reference on this screen</button><span class="note" id="tabNote"></span></div>
+        <p class="note">Turn brightness up and auto-lock off, and don't zoom the page. Wipe the screen first: dust under the plate lifts it. A 100 mm bar is drawn beside the ring if you want to check the scale with calipers.</p>
       </div>
     </div>
   </section>
@@ -328,6 +347,9 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
           <input type="file" id="fileInput" multiple accept="image/*,.tif,.tiff,.heic,.heif" hidden>
         </label>
         <ul class="files" id="fileList"></ul>
+        <div class="field"><label for="optPlate">Plate</label>
+          <select id="optPlate"><option value="standard">Standard (straight holes)</option><option value="thinrim">Thin-rim (v2)</option></select>
+        </div>
         <div id="scanOpts" class="fields">
           <div class="field"><label for="optDpi">Scan dpi (if not in file)</label><input id="optDpi" type="number" min="100" max="4800" step="1" placeholder="auto"></div>
         </div>
@@ -336,7 +358,10 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
             <div class="field"><label for="optSpanX">Sheet span X, mm</label><input id="optSpanX" type="number" step="0.05" placeholder="174.0"></div>
             <div class="field"><label for="optSpanY">Sheet span Y, mm</label><input id="optSpanY" type="number" step="0.05" placeholder="234.0"></div>
           </div>
-          <label class="row note" for="optWarp"><input type="checkbox" id="optWarp" checked> Model a slightly bowed plate</label>
+          <div class="field"><label for="optWarp">Bowed-plate correction</label>
+            <select id="optWarp"><option value="auto">Automatic: only if the plate looks bowed</option><option value="on">Always on</option><option value="off">Off: the plate is flat</option></select>
+          </div>
+          <p class="note">Spans are only for the paper sheet. A tablet reference is already exact.</p>
         </div>
         <button class="btn primary" id="runBtn" disabled>Measure</button>
         <div class="progress" id="progress" hidden><div></div></div>
@@ -401,5 +426,9 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
   </section>
 </div>
 <div class="toast" id="toast" hidden></div>
+<div id="screenRef" hidden style="position:fixed;inset:0;z-index:50;background:#fff;touch-action:none">
+  <canvas id="screenCanvas" style="position:absolute;left:0;top:0"></canvas>
+  <button class="btn small" id="screenDone" style="position:absolute;left:10px;top:calc(10px + env(safe-area-inset-top,0px));background:#fff;color:#142029;border-color:#bbb">Done</button>
+</div>
 
 <script src="app.js"></script>

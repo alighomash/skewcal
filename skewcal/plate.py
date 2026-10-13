@@ -32,6 +32,20 @@ class PlateSpec:
     y_pair_sep: float = 3.5    # centre-to-centre spacing of the Y-marker pair (mm)
     margin: float = 5.0        # solid border outside the outermost holes (mm)
     thickness: float = 1.6     # plate thickness (mm)
+    # Thin-rim ("v2") holes: the grid holes are hole_d only for the bottom `rim` mm,
+    # then widen as a cone to top_d at the top surface. The visible hole edge is then
+    # a thin first-layer rim, so lighting angle and parallax barely move it.
+    rim: float = 0.0           # 0 = straight holes (v1)
+    top_d: float = 0.0         # top-surface diameter of the cone (0 = hole_d)
+
+    @property
+    def thin_rim(self) -> bool:
+        return self.rim > 0 and self.top_d > self.hole_d
+
+    @property
+    def feature_height(self) -> float:
+        """Effective height of the hole edges above the surface the plate lies on."""
+        return self.rim / 2 if self.thin_rim else self.thickness / 2
 
     # ---- derived geometry -------------------------------------------------
     @property
@@ -83,7 +97,15 @@ class PlateSpec:
             "between Y markers": self.y_pair_sep - 2 * rm,
             "between grid holes": self.pitch - 2 * r,
         }
-        bad = {k: v for k, v in walls.items() if v < 0.9}
+        if self.thin_rim:
+            if not (0 < self.rim < self.thickness):
+                raise ValueError("rim must be between 0 and the plate thickness")
+            rt = self.top_d / 2
+            # the cone walls taper, so only their top edge may be thinner
+            walls["X marker to cone top"] = self.pitch / 2 - rm - rt
+            walls["Y marker to cone top"] = self.pitch / 2 - self.y_pair_sep / 2 - rm - rt
+            walls["between cone tops"] = self.pitch - 2 * rt
+        bad = {k: v for k, v in walls.items() if v < (0.5 if "cone top" in k else 0.9)}
         if bad:
             raise ValueError("Walls too thin to print reliably (<0.9 mm): " +
                              ", ".join(f"{k} = {v:.2f} mm" for k, v in bad.items()))
@@ -111,68 +133,76 @@ def _circle(cx, cy, d, segs):
     return np.c_[cx + d / 2 * np.cos(a), cy + d / 2 * np.sin(a)]
 
 
-def build_mesh(spec: PlateSpec, segs_big=72, segs_small=40):
-    """Return (vertices (V,3), triangles (T,3)) for a watertight plate."""
+def _triangulate(P, holes):
+    """Delaunay of outline + hole loops, minus triangles inside holes, oriented CCW (+Z)."""
     from scipy.spatial import Delaunay
-
-    spec.validate()
-    # Shift so the plate's front-left corner is at (0,0)
-    off = spec.edge
-
-    outline = spec.outline() + off
-    loops = []          # (points, is_hole)
-    hole_info = []      # (cx, cy, r_apothem)
-    pts = [outline]
-    for (cx, cy, d) in spec.holes():
-        segs = segs_big if d >= spec.hole_d else segs_small
-        c = _circle(cx + off, cy + off, d, segs)
-        loops.append(c)
-        hole_info.append((cx + off, cy + off, d / 2 * math.cos(math.pi / segs)))
-        pts.append(c)
-
-    P = np.vstack(pts)
     tri = Delaunay(P).simplices
-
-    # Drop triangles inside holes
     cen = P[tri].mean(axis=1)
     keep = np.ones(len(tri), bool)
-    for cx, cy, ap in hole_info:
+    for cx, cy, ap in holes:
         keep &= np.hypot(cen[:, 0] - cx, cen[:, 1] - cy) > ap
     tri = tri[keep]
-
-    # Orient CCW (normal +Z)
     a, b, c = P[tri[:, 0]], P[tri[:, 1]], P[tri[:, 2]]
     cross = (b[:, 0] - a[:, 0]) * (c[:, 1] - a[:, 1]) - (b[:, 1] - a[:, 1]) * (c[:, 0] - a[:, 0])
     flip = cross < 0
     tri[flip] = tri[flip][:, [0, 2, 1]]
+    return tri
 
-    nv = len(P)
+
+def build_mesh(spec: PlateSpec, segs_big=72, segs_small=40):
+    """Return (vertices (V,3), triangles (T,3)) for a watertight plate.
+
+    Every loop (outline, each hole) has the same vertex count at each height,
+    so the walls between heights are simple quad strips. Straight holes use
+    heights [0, t]; thin-rim holes use [0, rim, t] with the grid holes widening
+    to top_d between rim and t."""
+    spec.validate()
+    off = spec.edge          # front-left plate corner at (0, 0)
     t = spec.thickness
-    V = np.vstack([np.c_[P, np.zeros(nv)], np.c_[P, np.full(nv, t)]])
-    faces = [tri + nv, tri[:, [0, 2, 1]]]          # top (+Z), bottom (-Z)
+    zs = [0.0, spec.rim, t] if spec.thin_rim else [0.0, t]
 
-    # Side walls. Outer loop is CCW -> outward normals with (i, j, j+nv).
-    def wall(idx, outward_ccw):
+    holes = spec.holes()
+    segs = [segs_big if d >= spec.hole_d else segs_small for _, _, d in holes]
+
+    def loops_at(z):
+        out = [spec.outline() + off]
+        for (cx, cy, d), n in zip(holes, segs):
+            if spec.thin_rim and d >= spec.hole_d and z >= t:
+                d = spec.top_d
+            out.append(_circle(cx + off, cy + off, d, n))
+        return out
+
+    levels = [loops_at(z) for z in zs]
+    sizes = [len(l) for l in levels[0]]
+    per_level = sum(sizes)
+    V = np.vstack([np.c_[np.vstack(L), np.full(per_level, z)] for L, z in zip(levels, zs)])
+    starts = np.cumsum([0] + sizes[:-1])
+
+    def apothems(L):
+        return [(cx + off, cy + off, d_r)
+                for (cx, cy, _), loop, n in zip(holes, L[1:], segs)
+                for d_r in [np.hypot(*(loop[0] - [cx + off, cy + off])) * math.cos(math.pi / n)]]
+
+    faces = []
+    bottom = _triangulate(np.vstack(levels[0]), apothems(levels[0]))
+    faces.append(bottom[:, [0, 2, 1]])                                   # -Z
+    top = _triangulate(np.vstack(levels[-1]), apothems(levels[-1]))
+    faces.append(top + per_level * (len(zs) - 1))                        # +Z
+
+    def wall(lo, hi, idx, outward_ccw):
         k = len(idx)
         f = []
         for m in range(k):
-            i, j = idx[m], idx[(m + 1) % k]
-            if outward_ccw:
-                f += [(i, j, j + nv), (i, j + nv, i + nv)]
-            else:
-                f += [(j, i, i + nv), (j, i + nv, j + nv)]
+            i, j = idx[m] + lo, idx[(m + 1) % k] + lo
+            I, J = idx[m] + hi, idx[(m + 1) % k] + hi
+            f += [(i, j, J), (i, J, I)] if outward_ccw else [(j, i, I), (j, I, J)]
         return np.array(f)
 
-    start = 0
-    faces.append(wall(np.arange(start, start + 4), True))
-    start += 4
-    for loop in loops:
-        k = len(loop)
-        faces.append(wall(np.arange(start, start + k), False))   # hole walls face inward
-        start += k
-
-    F = np.vstack(faces)
-    return V, F
+    for lv in range(len(zs) - 1):
+        lo, hi = lv * per_level, (lv + 1) * per_level
+        for li, (st, n) in enumerate(zip(starts, sizes)):
+            faces.append(wall(lo, hi, np.arange(st, st + n), li == 0))   # outline faces out, holes in
+    return V, np.vstack(faces)
 
 
 def check_watertight(F) -> bool:

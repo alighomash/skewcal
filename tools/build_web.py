@@ -74,7 +74,7 @@ def write_site(out):
     if os.path.exists(out):
         shutil.rmtree(out)
     os.makedirs(out)
-    for name in ["app.js", "worker.js", "py_bundle.js", "sample_result.json"]:
+    for name in ["app.js", "worker.js", "py_bundle.js", "sample_result.json", "screen_markers.json"]:
         shutil.copy2(os.path.join(WEB, name), out)
     for d in ["samples", "assets"]:
         shutil.copytree(os.path.join(WEB, d), os.path.join(out, d))
@@ -99,18 +99,36 @@ def bundle_python():
 def copy_assets():
     out = os.path.join(WEB, "assets")
     os.makedirs(out, exist_ok=True)
-    for name in ["skewcal_plate.stl", "skewcal_plate.json", "skew_gcode.py",
+    for name in ["skewcal_plate.stl", "skewcal_plate.json", "skewcal_plate_thinrim.stl",
+                 "skewcal_plate_thinrim.json", "skew_gcode.py",
                  "skewcal_reference_letter.pdf", "skewcal_reference_letter_dark.pdf",
                  "skewcal_reference_a4.pdf", "skewcal_reference_a4_dark.pdf"]:
         shutil.copy2(os.path.join(ROOT, name), out)
     # Artifact downloads only allow common extensions, so STL and .py ship zipped too
     import zipfile
     for zname, members in [("skewcal_plate.zip", ["skewcal_plate.stl", "skewcal_plate.json"]),
+                           ("skewcal_plate_thinrim.zip", ["skewcal_plate_thinrim.stl", "skewcal_plate_thinrim.json"]),
                            ("skew_gcode.zip", ["skew_gcode.py"])]:
         with zipfile.ZipFile(os.path.join(out, zname), "w", zipfile.ZIP_DEFLATED) as z:
             for m in members:
                 z.write(os.path.join(ROOT, m), m)
     print("assets copied")
+
+
+def export_screen_markers():
+    """Bit patterns of the tablet-screen reference markers, drawn by the web app."""
+    import cv2
+    from skewcal import sheet
+    dic = cv2.aruco.getPredefinedDictionary(sheet.ARUCO_DICT)
+    markers = []
+    for mid, x, y in sheet.marker_layout("screen"):
+        img = cv2.aruco.generateImageMarker(dic, mid, 6, borderBits=1) > 0      # True = white
+        markers.append(dict(id=mid, x=x, y=y, bits=["".join("1" if v else "0" for v in row) for row in img]))
+    out = dict(marker_mm=sheet.SCREEN_MARKER_SIZE, window_half_mm=sheet.SCREEN_WINDOW_HALF,
+               ring_mm=sheet.SCREEN_RING, glass_mm=sheet.SCREEN_GLASS_MM, markers=markers)
+    with open(os.path.join(WEB, "screen_markers.json"), "w") as f:
+        json.dump(out, f)
+    print(f"screen_markers.json: {len(markers)} markers")
 
 
 def fetch_pyodide():
@@ -201,6 +219,7 @@ def main():
     if a.site:
         write_site(a.site)
         return
+    export_screen_markers()
     if not a.no_pyodide:
         fetch_pyodide()
     if not a.no_samples:

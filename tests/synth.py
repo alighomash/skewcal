@@ -92,7 +92,8 @@ def look_at(C, T):
 def render_photo(path, spec, M, f=3000.0, size=(3000, 2250), cam=(15, -40, 330), target=(0, 0, 0),
                  plate_rot=0.0, plate_off=(0, 0), h=0.8, k1=0.0, paper=np.eye(2),
                  dark_plate=True, dark_window=False, noise=0.012, blur=1.0, seed=0, jpeg=92,
-                 marker_scale=1.0, warp=0.0, glare=0.0, glare_period=220.0, glare_angle=40.0):
+                 marker_scale=1.0, warp=0.0, glare=0.0, glare_period=220.0, glare_angle=40.0,
+                 layout="paper"):
     """warp: height (mm) of the plate corners above its centre (a cupped plate).
     glare: peak brightness added to the plate surface in diagonal bands, like a lamp
     reflecting off the shiny top-layer lines (holes and paper are not affected)."""
@@ -118,12 +119,12 @@ def render_photo(path, spec, M, f=3000.0, size=(3000, 2250), cam=(15, -40, 330),
     paper_v, ink_v = 225, 18
     U = np.full((Hd * SS, Wd * SS), paper_v, np.uint8)
     if dark_window:
-        wh = sheet.WINDOW_HALF
+        wh = sheet.window_half(layout)
         _fill(U, proj(np.array([[-wh, -wh], [wh, -wh], [wh, wh], [-wh, wh]]) @ paper.T), ink_v)
     dic = cv2.aruco.getPredefinedDictionary(sheet.ARUCO_DICT)
-    hs = sheet.MARKER_SIZE / 2
-    cell = sheet.MARKER_SIZE / 6
-    for mid, x, y in sheet.marker_layout():
+    hs = sheet.marker_size(layout) / 2
+    cell = sheet.marker_size(layout) / 6
+    for mid, x, y in sheet.marker_layout(layout):
         bits = cv2.aruco.generateImageMarker(dic, mid, 6, borderBits=1)
         for r in range(6):
             for cc in range(6):

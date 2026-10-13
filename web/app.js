@@ -146,7 +146,7 @@ function setMode(mode) {
   $("#photoOpts").hidden = mode !== "photo";
   $("#dropHint").textContent = mode === "scan"
     ? "Drop two or more scans here, or click to choose. TIFF, PNG or JPEG."
-    : "Drop two or more photos here, or click to choose. JPEG or HEIC, original files.";
+    : "Drop your photos here (ideally four, plate turned 90° each time), or click to choose. JPEG or HEIC, original files.";
   store.set("mode", mode);
 }
 $("#modeScan").addEventListener("click", () => setMode("scan"));
@@ -165,12 +165,18 @@ function addFiles(list) {
   engine.start();                 // warm up while the user reviews the list
   engine.call("init").catch(() => {});
 }
+// plate position of an image relative to another, to the nearest 90 degrees
+function relPos(rot, rot0) {
+  if (rot == null || rot0 == null) return "?";
+  return ((Math.round((rot - rot0) / 90) % 4) + 4) % 4 * 90;
+}
+
 function renderFiles() {
   const ul = $("#fileList");
   ul.innerHTML = state.files.map((f, i) => {
     let chip = "";
     if (f.status === "running") chip = '<span class="chip info">measuring</span>';
-    else if (f.status === "done") chip = `<span class="chip ok">${f.orient === "A" ? "position A" : "turned 90°"}</span>`;
+    else if (f.status === "done") chip = `<span class="chip ok">plate at ${relPos(f.rot, state.files.find((x) => x.status === "done").rot)}°</span>`;
     else if (f.status === "failed") chip = '<span class="chip bad">failed</span>';
     return `<li><span title="${esc(f.name)}">${esc(f.name)}</span>${chip || "<span></span>"}<button type="button" aria-label="Remove ${esc(f.name)}" data-rm="${i}" ${state.running ? "disabled" : ""}>×</button></li>`;
   }).join("");
@@ -235,7 +241,8 @@ async function runAnalysis() {
   renderFiles();
   setProgress("#progress", 2);
   $("#runNote").textContent = engine.stage === "ready" ? "Measuring…" : "Loading the analysis engine…";
-  const opts = {};
+  const opts = { plate: $("#optPlate").value };
+  store.set("plate", opts.plate);
   if (state.mode === "scan") {
     const dpi = parseFloat($("#optDpi").value);
     if (dpi > 0) opts.dpi = dpi;
@@ -243,7 +250,7 @@ async function runAnalysis() {
     const sx = parseFloat($("#optSpanX").value), sy = parseFloat($("#optSpanY").value);
     if (sx > 0) opts.span_x = sx;
     if (sy > 0) opts.span_y = sy;
-    opts.warp = $("#optWarp").checked;
+    opts.warp = { auto: "auto", on: true, off: false }[$("#optWarp").value];
   }
   const overlays = {};
   try {
@@ -276,6 +283,7 @@ async function runAnalysis() {
         if (r.data.ok) {
           f.status = "done";
           f.orient = r.data.result.plate_x_along_frame_x ? "A" : "B";
+          f.rot = r.data.result.rotation_deg;
           if (r.overlay) overlays[f.name] = URL.createObjectURL(new Blob([r.overlay], { type: "image/jpeg" }));
         } else {
           f.status = "failed";
@@ -386,7 +394,7 @@ function renderResults() {
         <div class="fact"><div class="label">Skew</div><div class="v">${sgn(skew, 3)}°</div><div class="s">from a perfect 90°</div></div>
         <div class="fact"><div class="label">X drift</div><div class="v">${fx(Math.abs(per100), 2)} mm</div><div class="s">per 100 mm of Y travel</div></div>
         <div class="fact"><div class="label">Diagonals</div><div class="v">${fx(Math.abs(diag), 2)} mm</div><div class="s">difference on a 100 mm square</div></div>
-        <div class="fact"><div class="label">${R.mode === "scan" ? "Scanner" : "Sheet"} error</div><div class="v">${c.reversal ? sgn(c.frame_bias_deg, 3) + "°" : "not removed"}</div><div class="s">${c.reversal ? "measured and cancelled" : "add a turned image"}</div></div>
+        <div class="fact"><div class="label">${R.mode === "scan" ? "Scanner" : okImgs[0].result.reference === "screen" ? "Screen" : "Sheet"} error</div><div class="v">${c.reversal ? sgn(c.frame_bias_deg, 3) + "°" : "not removed"}</div><div class="s">${c.reversal ? "measured and cancelled" : "add a turned image"}</div></div>
       </div>
     </div>
 
@@ -398,7 +406,7 @@ function renderResults() {
       <div class="card">
         <header><h3>Each image</h3></header>
         <div id="reversalChart"></div>
-        <div class="legend" style="margin-top:8px"><span><i style="background:var(--accent)"></i>Position A</span><span><i style="background:var(--mark)"></i>Turned 90°</span><span><i style="background:var(--ink);border-radius:2px;height:3px;width:14px;vertical-align:3px"></i>Combined result</span></div>
+        <div class="legend" style="margin-top:8px"><span><i style="background:var(--accent)"></i>Plate at 0° or 180°</span><span><i style="background:var(--mark)"></i>Plate at 90° or 270°</span><span><i style="background:var(--ink);border-radius:2px;height:3px;width:14px;vertical-align:3px"></i>Combined result</span></div>
         <p class="note" style="margin-top:8px">${c.reversal
           ? "The two positions disagree by twice the scanner's own squareness error. The combined result sits halfway between them, so that error cancels."
           : "All images have the plate in the same position, so the scanner's own squareness error is still in this result. Add an image with the plate turned 90°."}</p>
@@ -424,7 +432,7 @@ function renderResults() {
       <div class="card">
         <header><h3>Scale</h3><span class="note">hole spacing, measured ÷ nominal</span></header>
         <div id="scaleBars"></div>
-        <p class="note" style="margin-top:10px">${R.mode === "photo" && !(okImgs[0].result.sheet_scale && (okImgs[0].result.sheet_scale[0] !== 1 || okImgs[0].result.sheet_scale[1] !== 1))
+        <p class="note" style="margin-top:10px">${R.mode === "photo" && okImgs[0].result.reference !== "screen" && !(okImgs[0].result.sheet_scale && (okImgs[0].result.sheet_scale[0] !== 1 || okImgs[0].result.sheet_scale[1] !== 1))
           ? "Assumes the reference sheet printed at exactly 100%. Enter your measured sheet spans for exact scale."
           : `To compensate in the slicer, scale objects to X ${fx(100 / c.scale_x, 2)}% and Y ${fx(100 / c.scale_y, 2)}%. Only worth it for tight fits.`}</p>
       </div>
@@ -477,7 +485,7 @@ function imageTable(R) {
     const warp = r.warp_corners_mm ? Math.max(...r.warp_corners_mm.map(Math.abs)) : null;
     return `<tr><td class="name" title="${esc(im.name)}">${esc(im.name)}</td><td>${fx(r.theta, 4)}°</td><td>±${fx(r.theta_std, 4)}</td>
       <td>${fx(100 * r.scale_x, 3)}%</td><td>${fx(100 * r.scale_y, 3)}%</td><td>${r.n_holes}/${r.n_expected}</td><td>${fx(r.rms_um, 0)} µm</td>
-      <td>${r.plate_x_along_frame_x ? "A" : "turned 90°"}${r.mirrored ? ", face down" : ""}</td>
+      <td>${relPos(r.rotation_deg, R.images.find((i) => i.ok).result.rotation_deg)}°${r.mirrored ? ", face down" : ""}</td>
       ${photo ? `<td>${fx(r.ref_rms_um, 0)} µm</td><td>${warp == null ? "–" : fx(warp, 1) + " mm"}</td><td>${fx(r.camera_distance_mm, 0)} mm</td>` : ""}</tr>`;
   }).join("");
   return `<table><thead><tr><th>Image</th><th>XY angle</th><th>±</th><th>Scale X</th><th>Scale Y</th><th>Holes</th><th>Fit rms</th><th>Position</th>
@@ -584,6 +592,12 @@ function drawChecks(R, imgs) {
   const c = R.combined;
   add(c.reversal ? "ok" : "warn", c.reversal ? "Plate turned 90° between images" : "All images in one position",
     c.reversal ? "The scanner's or sheet's own squareness error was measured and removed." : "Add an image with the plate turned 90°. Until then the result includes the scanner's error, often ±0.05°.");
+  const na = imgs.filter((i) => i.result.frame_sign > 0).length, nb = imgs.length - na;
+  if (c.reversal) {
+    add(imgs.length >= 4 && na >= 2 && nb >= 2 ? "ok" : "info", `${imgs.length} images: ${na} at 0°/180°, ${nb} at 90°/270°`,
+      imgs.length >= 4 && na >= 2 && nb >= 2 ? "Enough images for the scatter between them to set the uncertainty."
+        : "Two more images, with the plate turned another 90° each time, average out image-to-image noise and give an honest uncertainty.");
+  }
   const minHoles = Math.min(...imgs.map((i) => i.result.n_holes / i.result.n_expected));
   add(minHoles >= 0.95 ? "ok" : minHoles >= 0.8 ? "warn" : "bad", `${Math.round(minHoles * 81)} of 81 holes used (worst image)`,
     minHoles >= 0.95 ? "Every hole was found and fits the grid." : "Some holes were missing or rejected as outliers. Check for dust, flash or the plate edge leaving the image.");
@@ -591,12 +605,18 @@ function drawChecks(R, imgs) {
   add(rms < 80 ? "ok" : rms < 150 ? "warn" : "bad", `Fit residual ${fx(rms, 0)} µm`,
     rms < 80 ? "Holes sit where a straight, evenly scaled grid puts them." : "Holes scatter more than usual. A blurry image, a bent plate or poor first layer can cause this.");
   if (R.mode === "photo") {
+    const screen = imgs.every((i) => i.result.reference === "screen");
     const ref = Math.max(...imgs.map((i) => i.result.ref_rms_um || 0));
-    add(ref < 100 ? "ok" : ref < 200 ? "warn" : "bad", `Reference sheet fit ${fx(ref, 0)} µm`,
-      ref < 100 ? "The sheet's markers fit a flat page." : "The sheet looks wavy or the photo is soft. Tape the sheet flat and focus on the plate.");
-    const warp = Math.max(...imgs.map((i) => (i.result.warp_corners_mm ? Math.max(...i.result.warp_corners_mm.map(Math.abs)) : 0)));
-    add(warp < 0.5 ? "ok" : warp < 1.5 ? "warn" : "bad", `Plate bow ${fx(warp, 1)} mm at the corners`,
-      warp < 0.5 ? "The plate lies flat." : "The plate looks bowed. It mainly affects scale. Check it on a flat surface, or press it flat under glass.");
+    add(ref < 100 ? "ok" : ref < 200 ? "warn" : "bad", `${screen ? "Screen" : "Reference sheet"} fit ${fx(ref, 0)} µm`,
+      ref < 100 ? `The ${screen ? "screen's" : "sheet's"} markers fit a flat plane.` : "The reference looks uneven or the photo is soft. Use the 2× lens from 40–50 cm and focus on the plate.");
+    const bowed = imgs.filter((i) => i.result.warp_corners_mm);
+    if (bowed.length) {
+      const warp = Math.max(...bowed.map((i) => Math.max(...i.result.warp_corners_mm.map(Math.abs))));
+      const used = bowed.some((i) => i.result.warp_used);
+      add(!used ? "ok" : warp < 1.5 ? "warn" : "bad", used ? `Plate bow ${fx(warp, 1)} mm at the corners, corrected` : `Plate flat (fitted bow ${fx(warp, 1)} mm)`,
+        !used ? "No significant bow, so the bow correction was left off for a more precise result."
+          : "Either the plate is bowed or the lens distorts (common with the 1× lens up close). Scale is less certain. Use the 2× lens from 40–50 cm, and check the plate on a flat surface.");
+    }
     const foc = imgs.map((i) => i.result.focal_src);
     add(foc.every((f) => f === "EXIF") ? "ok" : "warn", foc.every((f) => f === "EXIF") ? "Focal length read from the photos" : "Focal length estimated",
       foc.every((f) => f === "EXIF") ? "Camera distance is known, so plate thickness is corrected exactly." : "Use the original photo files so the focal length is available.");
@@ -609,7 +629,7 @@ function drawChecks(R, imgs) {
   }
   const failed = R.images.filter((i) => !i.ok).length;
   if (failed) add("bad", `${failed} image${failed > 1 ? "s" : ""} could not be measured`, "See the messages under Per image.");
-  const label = { ok: "Good", warn: "Check", bad: "Problem" };
+  const label = { ok: "Good", warn: "Check", bad: "Problem", info: "Tip" };
   $("#checks").innerHTML = items.map((it) => `<li><span class="chip ${it.level}">${label[it.level]}</span><div><div class="what">${esc(it.what)}</div><div class="why">${esc(it.why)}</div></div></li>`).join("");
 }
 
@@ -768,16 +788,136 @@ function drawGuides() {
     <text x="80" y="${s2 + 34}" text-anchor="middle" class="t-ink">Scan 1</text>
     <text x="300" y="${s2 + 34}" text-anchor="middle" class="t-ink">Scan 2</text></svg>`;
 }
-$("#saveStl").addEventListener("click", () => IN_ARTIFACT ? saveAsset("assets/skewcal_plate.zip", "skewcal_plate.zip") : saveAsset("assets/skewcal_plate.stl", "skewcal_plate.stl"));
+let plateVersion = "standard";
+function setPlateVersion(v) {
+  plateVersion = v;
+  $("#plateStd").setAttribute("aria-pressed", String(v === "standard"));
+  $("#plateThin").setAttribute("aria-pressed", String(v === "thinrim"));
+  $("#plateNote").textContent = v === "thinrim"
+    ? "Holes are 4 mm only in the bottom 0.6 mm, then widen to 5.6 mm at the top. The visible hole edge is a thin first-layer rim, so lighting and viewing angle barely move it. Recommended for phone photos. Scan or photograph it first-layer side down, and choose Thin-rim when you measure."
+    : "Straight 4 mm holes through the plate. Works well with a flatbed scanner.";
+  $("#optPlate").value = v;
+}
+$("#plateStd").addEventListener("click", () => setPlateVersion("standard"));
+$("#plateThin").addEventListener("click", () => setPlateVersion("thinrim"));
+$("#saveStl").addEventListener("click", () => {
+  const base = plateVersion === "thinrim" ? "skewcal_plate_thinrim" : "skewcal_plate";
+  IN_ARTIFACT ? saveAsset(`assets/${base}.zip`, `${base}.zip`) : saveAsset(`assets/${base}.stl`, `${base}.stl`);
+});
 if (!IN_ARTIFACT) $("#stlNote").textContent = "114 × 114 × 1.6 mm, print as exported.";
 $("#sheetButtons").addEventListener("click", (e) => {
   const b = e.target.closest("[data-sheet]");
   if (b) saveAsset(`assets/skewcal_reference_${b.dataset.sheet}.pdf`, `skewcal_reference_${b.dataset.sheet}.pdf`);
 });
 
+// ------------------------------------------------------------------ tablet-screen reference
+const TABLETS = [
+  { name: "iPad Pro 13-inch (M4)", px: [2064, 2752], ppi: 264 },
+  { name: "iPad Pro 12.9-inch, iPad Air 13-inch", px: [2048, 2732], ppi: 264 },
+  { name: "iPad Pro 11-inch (M4)", px: [1668, 2420], ppi: 264 },
+  { name: "iPad Pro 11-inch (2018–2022)", px: [1668, 2388], ppi: 264 },
+  { name: "iPad Air 11-inch / 10.9-inch, iPad 10th gen / A16", px: [1640, 2360], ppi: 264 },
+  { name: "iPad 10.2-inch (7th–9th gen)", px: [1620, 2160], ppi: 264 },
+  { name: "iPad mini (too small)", px: [1488, 2266], ppi: 326 },
+];
+let screenSpec = null;
+function screenPx() {
+  const d = window.devicePixelRatio || 1;
+  return [Math.round(screen.width * d), Math.round(screen.height * d)].sort((a, b) => a - b);
+}
+function initTablet() {
+  const sel = $("#tabModel");
+  const px = screenPx();
+  const hit = TABLETS.findIndex((t) => Math.abs(t.px[0] - px[0]) <= 2 && Math.abs(t.px[1] - px[1]) <= 2);
+  sel.innerHTML = TABLETS.map((t, i) => `<option value="${i}">${esc(t.name)}${i === hit ? " (this device)" : ""}</option>`).join("")
+    + '<option value="custom">Other screen: enter its pixels per inch</option>';
+  sel.value = hit >= 0 ? String(hit) : "custom";
+  const syncSel = () => { $("#tabPpiWrap").hidden = sel.value !== "custom"; };
+  sel.onchange = syncSel; syncSel();
+  if (hit < 0) $("#tabNote").textContent = `This screen: ${px[1]} × ${px[0]} pixels. Pick your model, or enter its ppi.`;
+}
+async function showScreenRef() {
+  if (!screenSpec) {
+    try { screenSpec = await (await fetch("screen_markers.json")).json(); } catch { return toast("Couldn't load the marker pattern."); }
+  }
+  const sel = $("#tabModel").value;
+  const ppi = sel === "custom" ? parseFloat($("#tabPpi").value) : TABLETS[Number(sel)].ppi;
+  if (!(ppi > 50)) return toast("Enter the screen's pixels per inch.");
+  const px = screenPx();
+  const needMm = 2 * (screenSpec.ring_mm + screenSpec.marker_mm / 2) + 4;
+  const shortMm = (px[0] / ppi) * 25.4;
+  if (shortMm < needMm) return toast(`This screen is ${shortMm.toFixed(0)} mm across; the pattern needs ${needMm.toFixed(0)} mm. Use a larger tablet or the paper sheet.`);
+  const el = $("#screenRef");
+  el.hidden = false;
+  el.dataset.ppi = ppi;
+  try { await (el.requestFullscreen || el.webkitRequestFullscreen).call(el); } catch { /* fills the window instead */ }
+  try { screenRefLock = await navigator.wakeLock?.request("screen"); } catch { /* optional */ }
+  drawScreenRef();
+}
+let screenRefLock = null;
+function drawScreenRef() {
+  const el = $("#screenRef");
+  if (el.hidden || !screenSpec) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = Math.round(window.innerWidth * dpr), H = Math.round(window.innerHeight * dpr);
+  const cv = $("#screenCanvas");
+  cv.width = W; cv.height = H;
+  cv.style.width = W / dpr + "px"; cv.style.height = H / dpr + "px";
+  const ctx = cv.getContext("2d");
+  const k = Number(el.dataset.ppi) / 25.4;              // device pixels per mm
+  const cx = W / 2, cy = H / 2;
+  const X = (mm) => cx + mm * k, Y = (mm) => cy - mm * k;
+  const dark = $("#tabDark").checked;
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+  const wh = screenSpec.window_half_mm;
+  if (dark) { ctx.fillStyle = "#000"; ctx.fillRect(X(-wh), Y(wh), 2 * wh * k, 2 * wh * k); }
+  ctx.fillStyle = "#000";
+  const m = screenSpec.marker_mm, cell = m / 6;
+  for (const mk of screenSpec.markers) {
+    mk.bits.forEach((row, r) => [...row].forEach((b, c) => {
+      if (b === "0") ctx.fillRect(X(mk.x - m / 2 + c * cell), Y(mk.y + m / 2 - r * cell), cell * k, cell * k);
+    }));
+  }
+  // corner ticks for placing the plate, inside the window
+  ctx.strokeStyle = dark ? "#fff" : "#000"; ctx.lineWidth = 0.3 * k;
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+    const x0 = sx * (wh - 1), y0 = sy * (wh - 1);
+    ctx.beginPath(); ctx.moveTo(X(x0 - sx * 6), Y(y0)); ctx.lineTo(X(x0), Y(y0)); ctx.lineTo(X(x0), Y(y0 - sy * 6)); ctx.stroke();
+  }
+  // 100 mm check bar in the margin along the long side
+  ctx.strokeStyle = "#000"; ctx.fillStyle = "#000"; ctx.lineWidth = 0.25 * k;
+  const off = screenSpec.ring_mm + m / 2 + 8;
+  const portrait = H >= W;
+  for (let i = 0; i <= 10; i++) {
+    const t = -50 + 10 * i, len = i % 5 ? 1.5 : 3;
+    ctx.beginPath();
+    if (portrait) { ctx.moveTo(X(t), Y(-off)); ctx.lineTo(X(t), Y(-off - len)); } else { ctx.moveTo(X(off), Y(t)); ctx.lineTo(X(off + len), Y(t)); }
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  if (portrait) { ctx.moveTo(X(-50), Y(-off)); ctx.lineTo(X(50), Y(-off)); } else { ctx.moveTo(X(off), Y(-50)); ctx.lineTo(X(off), Y(50)); }
+  ctx.stroke();
+  ctx.font = `${3 * k}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  if (portrait) ctx.fillText("100 mm", X(0), Y(-off - 8));
+  const vv = window.visualViewport;
+  if (vv && Math.abs(vv.scale - 1) > 0.01) toast("The page is zoomed. Zoom back out, or the scale will be wrong.");
+}
+async function hideScreenRef() {
+  $("#screenRef").hidden = true;
+  try { if (document.fullscreenElement) await document.exitFullscreen(); } catch { /* not fullscreen */ }
+  try { await screenRefLock?.release(); } catch { /* already released */ }
+}
+$("#tabShow").addEventListener("click", showScreenRef);
+$("#screenDone").addEventListener("click", hideScreenRef);
+window.addEventListener("resize", drawScreenRef);
+document.addEventListener("fullscreenchange", () => setTimeout(drawScreenRef, 100));
+
 // ------------------------------------------------------------------ start
 async function boot() {
   setMode(store.get("mode") === "photo" ? "photo" : "scan");
+  setPlateVersion(store.get("plate") === "thinrim" ? "thinrim" : "standard");
+  initTablet();
   drawGuides();
   renderFiles();
   loadSamples();

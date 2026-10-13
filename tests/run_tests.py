@@ -119,6 +119,31 @@ res, _ = run(["photo", p7, p8, "--out", OUT, "--focal-px", "3000",
               "--span-x", f"{174*1.003:.2f}", "--span-y", f"{234*0.998:.2f}"])
 check("phone, glare bands on the plate", res, th3, sx3, sy3, 0.02, 1.5e-3)
 
+# ---- 7. phone, reference shown on a tablet screen (exact scale, plate on cover glass) ---------
+from skewcal import sheet  # noqa: E402
+p9 = os.path.join(OUT, "photo_9.jpg"); p10 = os.path.join(OUT, "photo_10.jpg")
+hs = spec.feature_height + sheet.SCREEN_GLASS_MM
+synth.render_photo(p9, spec, M3, cam=(10, -35, 300), plate_rot=1.0, k1=-0.02, layout="screen", h=hs, seed=13)
+synth.render_photo(p10, spec, M3, cam=(-10, -30, 290), plate_rot=-89.0, k1=-0.02, layout="screen", h=hs, seed=14)
+res, _ = run(["photo", p9, p10, "--out", OUT, "--no-annotate", "--focal-px", "3000"])
+check("phone, tablet-screen reference", res, th3, sx3, sy3, 0.02, 8e-4)
+
+# ---- 8. thin-rim (v2) plate, four photos at 0/90/180/270 deg -------------------------------
+spec2 = PlateSpec(rim=0.6, top_d=5.6)
+js2 = os.path.join(OUT, "plate_thinrim.json"); spec2.to_json(js2)
+quad = []
+for k, (rot, cam) in enumerate([(0.5, (15, -40, 320)), (90.5, (-20, -35, 330)),
+                                (180.5, (10, -45, 310)), (270.5, (-15, -30, 325))]):
+    pq = os.path.join(OUT, f"photo_q{k}.jpg")
+    synth.render_photo(pq, spec2, M3, cam=cam, plate_rot=rot, k1=-0.03, paper=paper,
+                       h=spec2.feature_height, seed=20 + k)
+    quad.append(pq)
+res, txt = run(["photo", *quad, "--plate", js2, "--out", OUT, "--no-annotate", "--focal-px", "3000",
+                "--span-x", f"{174*1.003:.2f}", "--span-y", f"{234*0.998:.2f}"])
+check("phone, thin-rim plate, four photos", res, th3, sx3, sy3, 0.02, 8e-4)
+if "2 with the plate at 0/180" not in txt:
+    print("FAIL  report should count plate positions"); failures.append("positions line")
+
 print()
 print("ALL PASSED" if not failures else f"FAILED: {failures}")
 sys.exit(1 if failures else 0)

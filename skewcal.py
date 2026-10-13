@@ -20,8 +20,12 @@ from skewcal import sheet as sheet_mod
 
 
 def cmd_plate(a):
+    rim, top_d = a.rim, a.top_d
+    if a.thin_rim:
+        rim = rim or 0.6
+        top_d = top_d or a.hole_d + 1.6
     spec = PlateSpec(n=a.n, pitch=a.pitch, hole_d=a.hole_d, marker_d=a.marker_d,
-                     thickness=a.thickness)
+                     thickness=a.thickness, rim=rim, top_d=top_d)
     walls = spec.validate()
     V, F = build_mesh(spec)
     if not check_watertight(F):
@@ -32,6 +36,9 @@ def cmd_plate(a):
     print(f"Plate {spec.size:.1f} x {spec.size:.1f} x {spec.thickness} mm, "
           f"{spec.n}x{spec.n} holes @ {spec.pitch} mm (span {spec.span:.1f} mm)")
     print(f"Thinnest wall {min(walls.values()):.2f} mm. Wrote {a.output} and {js}")
+    if spec.thin_rim:
+        print(f"Thin-rim holes: {spec.hole_d} mm for the bottom {spec.rim} mm, widening to {spec.top_d} mm "
+              "at the top. Scan or photograph it first-layer side down.")
     print("Print it flat, exactly as oriented in the file (do not rotate it in the slicer).")
 
 
@@ -64,7 +71,8 @@ def format_report(results, names, combined, spec, mode, script_path=None):
                      f"distance {r['camera_distance_mm']:.0f} mm ({r['focal_src']} focal)]")
             if "warp_corners_mm" in r:
                 extra += (" [plate corners vs centre: "
-                          + " ".join(f"{z:+.1f}" for z in r["warp_corners_mm"]) + " mm]")
+                          + " ".join(f"{z:+.1f}" for z in r["warp_corners_mm"]) + " mm"
+                          + ("" if r.get("warp_used", True) else ", not significant: bow model off") + "]")
         P(f"  {n}: XY angle {r['theta']:.4f} +/- {r['theta_std']:.4f} deg | scale X {100*r['scale_x']:.3f}%"
           f" Y {100*r['scale_y']:.3f}% | {r['n_holes']}/{r['n_expected']} holes, fit rms {r['rms_um']:.1f} um"
           f" | {orient}{', mirrored' if r['mirrored'] else ''}{extra}")
@@ -79,6 +87,12 @@ def format_report(results, names, combined, spec, mode, script_path=None):
         P("           (the Y axis leans toward -X: corners at +X+Y / -X-Y are obtuse)")
     elif skew < 0:
         P("           (the Y axis leans toward +X: corners at +X+Y / -X-Y are acute)")
+    na = sum(1 for r in results if r["frame_sign"] > 0)
+    nb = len(results) - na
+    P(f"Positions: {na} with the plate at 0/180 deg, {nb} at 90/270 deg (relative to each other)")
+    if combined["reversal"] and len(results) < 4:
+        P("           Tip: two more images, with the plate turned another 90 deg each time, average out")
+        P("           image-to-image noise and give an honest uncertainty from the scatter.")
     if combined["reversal"]:
         P(f"Reference bias removed by 90-deg reversal: {combined['frame_bias_deg']:+.4f} deg")
     else:
@@ -129,7 +143,7 @@ def _run(a, mode):
                 r = an.analyze_photo(p, spec, focal_px=a.focal_px, span_x=a.span_x, span_y=a.span_y,
                                      hole_height=a.hole_height, annotate_path=ann,
                                      fit_distortion=not a.no_distortion,
-                                     correct_warp=not a.no_warp)
+                                     correct_warp=False if a.no_warp else True if a.warp else "auto")
         except RuntimeError as e:
             print(f"  {os.path.basename(p)}: FAILED - {e}", file=sys.stderr)
             continue
@@ -152,6 +166,10 @@ def main(argv=None):
     p.add_argument("--hole-d", type=float, default=4.0)
     p.add_argument("--marker-d", type=float, default=2.0)
     p.add_argument("--thickness", type=float, default=1.6)
+    p.add_argument("--thin-rim", action="store_true",
+                   help="v2 plate: thin first-layer hole rims (rim 0.6 mm, cone to hole_d + 1.6 mm)")
+    p.add_argument("--rim", type=float, default=0.0, help="thin-rim height in mm (with --thin-rim)")
+    p.add_argument("--top-d", type=float, default=0.0, help="cone diameter at the top surface")
 
     p = sub.add_parser("sheet", help="generate the phone reference sheet (PDF)")
     p.add_argument("--page", choices=["letter", "a4"], default="letter")
@@ -173,6 +191,8 @@ def main(argv=None):
             p.add_argument("--hole-height", type=float, help="effective feature height above sheet (default thickness/2)")
             p.add_argument("--no-distortion", action="store_true", help="skip lens-distortion fit")
             p.add_argument("--no-warp", action="store_true", help="assume the plate is perfectly flat")
+            p.add_argument("--warp", action="store_true",
+                           help="always fit the bowed-plate model (default: only when the bow is significant)")
 
     a = ap.parse_args(argv)
     if a.cmd == "plate":

@@ -52,6 +52,15 @@ The G-code post-processor (`skew_gcode.py`) uses only the Python standard librar
 
 ## 3b. Measure with a phone
 
+**Best setup:** the thin-rim plate, a tablet as the reference, the 2× lens from 40–50 cm, and four photos with the plate turned 90° each time.
+
+- **Thin-rim plate (v2).** `skewcal_plate_thinrim.stl`, or `skewcal.py plate --thin-rim`. Its holes are 4 mm only in the bottom 0.6 mm and widen to 5.6 mm at the top. The visible edge is then a thin first-layer rim, so lighting and viewing angle barely move it. Lay it first-layer side down, and analyse with `--plate skewcal_plate_thinrim.json`.
+- **Tablet reference.** In the web app, open *Scan or photograph → Tablet as the reference* on an iPad (11-inch or larger). It draws a compact marker ring full screen at exact size. Pixel pitch is exact, so no ruler check is needed, and glass is flatter than paper. The analysis recognises the screen markers automatically and allows for the cover glass the plate lies on.
+- **Four photos** (plate at 0°, 90°, 180°, 270°). The report counts positions, and with more than two images the uncertainty comes from the real scatter.
+- **Bowed-plate correction** is automatic. It is used only when the photos show a significant bow (more than 0.5 mm, and more than 3× its uncertainty), because on a flat plate it only adds noise. Use `--warp` or `--no-warp` to force it.
+
+With the paper sheet instead:
+
 1. Print the reference sheet `skewcal_reference_letter.pdf` (or `_a4`) at **100% / Actual size**. For a light-coloured plate, use the `_dark` version.
 2. Measure the two spans marked with arrows on the printed sheet, using calipers or a steel rule (not the printed 100 mm ruler, which comes from the same printer):
    - **SPAN X:** outer edge to outer edge of the **top row** of black squares (nominal 174 mm).

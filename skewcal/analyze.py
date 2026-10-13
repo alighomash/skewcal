@@ -464,10 +464,29 @@ def affine_uncertainty(sol, cov, n=3000, seed=0):
     return float(np.std(th)), float(np.std(sx)), float(np.std(sy))
 
 
+BOW_MIN_MM = 0.5     # "auto" warp: smaller fitted bows are treated as a flat plate
+
+
+def _bow_corners(sol, cov, spec, D):
+    """Fitted height (mm) of the four outer holes above the plate centre, and the
+    1-sigma uncertainty of the largest one. D is the camera distance (mm)."""
+    h = (spec.span / 2) ** 2 / 1e4
+    z, sd = [], []
+    for sx_ in (-1, 1):
+        for sy_ in (-1, 1):
+            c = np.zeros(len(sol))
+            c[6:9] = h * np.array([1.0, sx_ * sy_, 1.0])
+            z.append(float(D * c @ sol))
+            sd.append(float(D * math.sqrt(max(c @ cov @ c, 0.0))))
+    k = int(np.argmax(np.abs(z)))
+    return z, sd[k]
+
+
 def analyze_metric(g, s, to_mm, spec: PlateSpec, scale_corr=1.0, annotate_path=None, warp=False,
-                   details=False, annotate_crop=False):
+                   details=False, annotate_crop=False, camera_distance=None):
     """Full measurement on a metric image. to_mm maps (N,2) pixel coords -> mm (y up).
-    details=True adds per-hole data (nominal position, residual in plate axes) for plotting."""
+    warp: False, True, or "auto" (fit the bowed-plate model, keep it only if the bow is
+    significant; needs camera_distance). details=True adds per-hole data for plotting."""
     det = detect_holes(g, s, spec)
     big_mm, small_mm = to_mm(det["big"]), to_mm(det["small"])
     try:
@@ -476,7 +495,15 @@ def analyze_metric(g, s, to_mm, spec: PlateSpec, scale_corr=1.0, annotate_path=N
         nom, meas = index_grid_by_lattice(det, big_mm, spec, to_mm)
     if len(nom) < 12:
         raise RuntimeError(f"Only {len(nom)} grid holes could be indexed.")
-    P, keep, pred, res, sigma, sol, cov = fit_affine(nom, meas, warp)
+    P, keep, pred, res, sigma, sol, cov = fit_affine(nom, meas, bool(warp))
+    bow = None
+    if warp and camera_distance:
+        bow = _bow_corners(sol, cov, spec, camera_distance)
+        if warp == "auto":
+            zmax = max(abs(z) for z in bow[0])
+            if zmax < max(BOW_MIN_MM, 3 * bow[1]):
+                warp = False
+                P, keep, pred, res, sigma, sol, cov = fit_affine(nom, meas, False)
     sx, sy, theta, a1, a2 = geometry_from_affine(P)
     dth, dsx, dsy = affine_uncertainty(sol, cov)
     # orientation of plate axes relative to the image/reference frame
@@ -494,12 +521,8 @@ def analyze_metric(g, s, to_mm, spec: PlateSpec, scale_corr=1.0, annotate_path=N
         hole_d_mean=float(np.mean(det["hole_d"])) if len(det["hole_d"]) else None,
         dark_plate=det["dark_plate"],
     )
-    if warp:
-        # warp coefficients are z/D per (100 mm)^2: z/D at the four outer holes
-        # relative to the plate centre (the caller multiplies by D)
-        h = (spec.span / 2) ** 2 / 1e4
-        out["warp_zD_corners"] = [float(h * (sol[6] + sx_ * sy_ * sol[7] + sol[8]))
-                                  for sx_ in (-1, 1) for sy_ in (-1, 1)]
+    if bow:
+        out.update(warp_corners_mm=bow[0], warp_corners_std_mm=bow[1], warp_used=bool(warp))
     if details:
         # residuals expressed along the plate's own axes, so plots read the same
         # however the plate lay on the scanner/sheet
@@ -659,9 +682,13 @@ def rectify_phone(g, exif, focal_px=None, span_x=None, span_y=None, ppmm=15.0,
     if ids is None or len(ids) < 6:
         raise RuntimeError(f"Found {0 if ids is None else len(ids)} reference markers; need at least 6. "
                            "Make sure the whole sheet is in frame, in focus and evenly lit.")
-    kx = (span_x / sheet.SPAN_X_NOMINAL) if span_x else 1.0
-    ky = (span_y / sheet.SPAN_Y_NOMINAL) if span_y else 1.0
-    ref = sheet.marker_corners(kx, ky)
+    layout = sheet.layout_of(ids)
+    if layout == "screen":
+        kx = ky = 1.0                 # a screen's pixel pitch is exact; spans are a paper check
+    else:
+        kx = (span_x / sheet.SPAN_X_NOMINAL) if span_x else 1.0
+        ky = (span_y / sheet.SPAN_Y_NOMINAL) if span_y else 1.0
+    ref = sheet.marker_corners(kx, ky, layout)
     ip, sp, sg = [], [], []
     for cset, mid in zip(corners, ids.ravel()):
         if int(mid) in ref:
@@ -713,7 +740,7 @@ def rectify_phone(g, exif, focal_px=None, span_x=None, span_y=None, ppmm=15.0,
     D, tilt = camera_distance(H_s2i, f, c)
 
     # Rectify the window region
-    Wh = sheet.WINDOW_HALF
+    Wh = sheet.window_half(layout)
     n = int(round(2 * Wh * ppmm))
     cols, rows = np.meshgrid(np.arange(n, dtype=np.float64), np.arange(n, dtype=np.float64))
     xs, ys = cols / ppmm - Wh, Wh - rows / ppmm
@@ -724,23 +751,23 @@ def rectify_phone(g, exif, focal_px=None, span_x=None, span_y=None, ppmm=15.0,
                      cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
     px_per_mm_img = 1.0 / np.sqrt(abs(np.linalg.det(H_i2s[:2, :2])))  # rough, at origin
     meta = dict(markers=int(len(ids)), ref_rms_um=1000 * rms, k1=k1, marker_growth_um=1000 * grow, focal_px=f, focal_src=f_src,
-                camera_distance_mm=float(D), tilt_deg=tilt, sheet_scale=(kx, ky))
+                camera_distance_mm=float(D), tilt_deg=tilt, sheet_scale=(kx, ky),
+                reference=layout, window_half=Wh, ref_offset_mm=sheet.reference_offset(layout))
     return rect, ppmm, meta
 
 
 def analyze_photo(path, spec, focal_px=None, span_x=None, span_y=None, hole_height=None,
-                  annotate_path=None, fit_distortion=True, correct_warp=True, **kw):
+                  annotate_path=None, fit_distortion=True, correct_warp="auto", **kw):
     g, _, exif = load_gray(path)
     rect, s, meta = rectify_phone(g, exif, focal_px, span_x, span_y, fit_distortion=fit_distortion)
-    Wh = sheet.WINDOW_HALF
+    Wh = meta["window_half"]
     to_mm = lambda q: np.c_[q[:, 0] / s - Wh, Wh - q[:, 1] / s] if len(q) else q
-    h = spec.thickness / 2 if hole_height is None else hole_height
+    h = spec.feature_height if hole_height is None else hole_height
+    h += meta.get("ref_offset_mm", 0.0)    # e.g. a screen's cover glass under the plate
     D = meta["camera_distance_mm"]
     corr = (D - h) / D            # features at height h appear enlarged by D/(D-h)
     r = analyze_metric(rect, s, to_mm, spec, scale_corr=corr, annotate_path=annotate_path,
-                       warp=correct_warp, **kw)
-    if "warp_zD_corners" in r:
-        r["warp_corners_mm"] = [z * D for z in r.pop("warp_zD_corners")]
+                       warp=correct_warp, camera_distance=D, **kw)
     r.update(mode="photo", parallax_corr=corr, **meta)
     return r
 

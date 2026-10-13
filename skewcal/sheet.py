@@ -23,8 +23,34 @@ SPAN_X_NOMINAL = (COLS[-1] - COLS[0]) + MARKER_SIZE   # outer edges, top row: 17
 SPAN_Y_NOMINAL = (ROWS[0] - ROWS[-1]) + MARKER_SIZE   # outer edges, left column: 234 mm
 
 
-def marker_layout():
+# ---------------------------------------------------------------------------
+# Screen reference: a compact ring shown full-size on a tablet (web app). It uses
+# marker ids after the paper sheet's, so a photo tells which reference it shows.
+# A screen's pixel pitch is exact, so it needs no ruler check, but the plate lies
+# on the cover glass, which sits a little above the pixels.
+# ---------------------------------------------------------------------------
+SCREEN_MARKER_SIZE = 10.0
+SCREEN_WINDOW_HALF = 62.0              # 124 mm window: the 114 mm plate with 5 mm to spare
+SCREEN_RING = SCREEN_WINDOW_HALF + 2 + SCREEN_MARKER_SIZE / 2    # marker centres at +/-69 mm
+SCREEN_PER_SIDE = 11
+SCREEN_GLASS_MM = 0.7                  # pixels to top of cover glass (typical tablet)
+LAYOUTS = ("paper", "screen")
+
+
+def _paper_count():
+    return len(marker_layout("paper"))
+
+
+def marker_layout(layout="paper"):
     """List of (id, centre_x, centre_y) for all markers outside the window."""
+    if layout == "screen":
+        c = np.linspace(-SCREEN_RING, SCREEN_RING, SCREEN_PER_SIDE)
+        pts = [(x, SCREEN_RING) for x in c]                       # top, left to right
+        pts += [(SCREEN_RING, y) for y in c[::-1][1:]]            # right, top to bottom
+        pts += [(x, -SCREEN_RING) for x in c[::-1][1:]]           # bottom, right to left
+        pts += [(-SCREEN_RING, y) for y in c[1:-1]]               # left, bottom to top
+        first = _paper_count()
+        return [(first + k, float(x), float(y)) for k, (x, y) in enumerate(pts)]
     out = []
     mid = 0
     lim = WINDOW_HALF + MARKER_SIZE / 2
@@ -37,13 +63,32 @@ def marker_layout():
     return out
 
 
-def marker_corners(scale_x=1.0, scale_y=1.0):
+def marker_size(layout="paper"):
+    return SCREEN_MARKER_SIZE if layout == "screen" else MARKER_SIZE
+
+
+def window_half(layout="paper"):
+    return SCREEN_WINDOW_HALF if layout == "screen" else WINDOW_HALF
+
+
+def reference_offset(layout="paper"):
+    """Height of the surface the plate lies on above the marker plane (mm)."""
+    return SCREEN_GLASS_MM if layout == "screen" else 0.0
+
+
+def layout_of(ids):
+    """Which reference a set of detected marker ids belongs to."""
+    ids = np.asarray(ids).ravel()
+    return "screen" if (ids >= _paper_count()).sum() > (ids < _paper_count()).sum() else "paper"
+
+
+def marker_corners(scale_x=1.0, scale_y=1.0, layout="paper"):
     """dict id -> (4,2) corners in sheet mm, in OpenCV order (TL, TR, BR, BL as seen
     on the page). Optional scale factors correct for a printer that did not print
     at exactly 100%."""
-    h = MARKER_SIZE / 2
+    h = marker_size(layout) / 2
     d = {}
-    for mid, x, y in marker_layout():
+    for mid, x, y in marker_layout(layout):
         c = np.array([[x - h, y + h], [x + h, y + h], [x + h, y - h], [x - h, y - h]])
         c[:, 0] *= scale_x
         c[:, 1] *= scale_y

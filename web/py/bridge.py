@@ -14,7 +14,8 @@ import numpy as np
 from skewcal import analyze as an
 from skewcal.plate import PlateSpec
 
-SPEC = PlateSpec()
+PLATES = {"standard": PlateSpec(), "thinrim": PlateSpec(rim=0.6, top_d=5.6)}
+SPEC = PLATES["standard"]
 _results = []          # [(name, result dict | None, error | None)]
 
 
@@ -40,8 +41,10 @@ def reset():
 
 
 def analyze_one(mode, path, name, opts_json, overlay_dir="/tmp/out"):
-    """Analyse one image. opts: dpi, span_x, span_y, warp, distortion, focal35."""
+    """Analyse one image. opts: plate, dpi, span_x, span_y, warp ("auto"|true|false), focal35."""
+    global SPEC
     o = json.loads(opts_json or "{}")
+    SPEC = PLATES.get(o.get("plate") or "standard", PLATES["standard"])
     os.makedirs(overlay_dir, exist_ok=True)
     stem = os.path.splitext(os.path.basename(name))[0]
     ann = os.path.join(overlay_dir, stem + "_skewcal.jpg")
@@ -56,7 +59,7 @@ def analyze_one(mode, path, name, opts_json, overlay_dir="/tmp/out"):
             r = an.analyze_photo(path, SPEC, focal_px=focal_px, span_x=o.get("span_x") or None,
                                  span_y=o.get("span_y") or None, annotate_path=ann,
                                  fit_distortion=o.get("distortion", True),
-                                 correct_warp=o.get("warp", True), details=True, annotate_crop=True)
+                                 correct_warp=o.get("warp", "auto"), details=True, annotate_crop=True)
             if focal_px:
                 r["focal_src"] = "EXIF"
         _results.append((name, r, None))
