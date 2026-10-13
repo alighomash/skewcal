@@ -100,7 +100,10 @@ def format_report(results, names, combined, spec, mode, script_path=None):
         P("         squareness error is NOT cancelled. Add an image with the plate turned 90 deg.")
     sx, sy = combined["scale_x"], combined["scale_y"]
     P(f"Scale:     X {100*sx:.3f}%   Y {100*sy:.3f}%   (hole-centre spacing, measured/nominal)")
-    if mode == "photo" and tuple(results[0].get("sheet_scale", (1.0, 1.0))) == (1.0, 1.0):
+    if mode == "photo" and results[0].get("reference") == "screen":
+        P("           (tablet reference: scale relies on the screen's published ppi and an assumed")
+        P("            0.7 mm cover glass; a scan of the same plate is the check)")
+    elif mode == "photo" and tuple(results[0].get("sheet_scale", (1.0, 1.0))) == (1.0, 1.0):
         P("           (absolute scale assumes the sheet printed at exactly 100%; pass --span-x/--span-y")
         P("            with your ruler/caliper measurements to make it exact)")
     P(f"           -> slicer object scale X {100/sx:.2f}%  Y {100/sy:.2f}% (only if you want to compensate)")

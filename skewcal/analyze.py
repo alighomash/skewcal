@@ -299,21 +299,36 @@ def index_grid(big, small, spec: PlateSpec):
         raise RuntimeError(f"Marker geometry inconsistent (axis angle {ang:.1f} deg).")
 
     B = np.c_[ex, ey] / p           # nominal mm -> measured mm (approx.)
-    Binv = np.linalg.inv(B)
-    nom, meas = [], []
-    seen = set()
-    for q in big:
-        ij = Binv @ (q - O) / p
-        r = np.round(ij)
-        if np.max(np.abs(ij - r)) > 0.3:
-            continue
-        i, j = int(r[0]), int(r[1])
-        if not (0 <= i < spec.n and 0 <= j < spec.n) or (i, j) in seen:
-            continue
-        seen.add((i, j))
-        nom.append((i * p, j * p))
-        meas.append(q)
-    return np.array(nom), np.array(meas)
+
+    def assign(B, O):
+        Binv = np.linalg.inv(B)
+        nom, meas, seen = [], [], set()
+        for q in big:
+            ij = Binv @ (q - O) / p
+            r = np.round(ij)
+            if np.max(np.abs(ij - r)) > 0.3:
+                continue
+            i, j = int(r[0]), int(r[1])
+            if not (0 <= i < spec.n and 0 <= j < spec.n) or (i, j) in seen:
+                continue
+            seen.add((i, j))
+            nom.append((i * p, j * p))
+            meas.append(q)
+        return np.array(nom), np.array(meas)
+
+    # The markers sit only half a pitch from the origin, so their small centring
+    # errors grow across the plate. Use them to start, then refit the axes from
+    # the holes assigned so far and reassign, until no more holes join.
+    nom, meas = assign(B, O)
+    for _ in range(4):
+        if len(nom) < 6:
+            break
+        A, *_ = np.linalg.lstsq(np.c_[nom, np.ones(len(nom))], meas, rcond=None)
+        nom2, meas2 = assign(A[:2].T, A[2])
+        if len(nom2) <= len(nom):
+            break
+        nom, meas = nom2, meas2
+    return nom, meas
 
 
 def _lattice(big, spec: PlateSpec):
