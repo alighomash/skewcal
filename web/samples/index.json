@@ -1,0 +1,20 @@
+[
+ {
+  "key": "before",
+  "title": "Prusa MINI+, before correction",
+  "mode": "scan",
+  "files": [
+   "before_1.jpg",
+   "before_2.jpg"
+  ]
+ },
+ {
+  "key": "after",
+  "title": "Prusa MINI+, after correction",
+  "mode": "scan",
+  "files": [
+   "after_1.jpg",
+   "after_2.jpg"
+  ]
+ }
+]

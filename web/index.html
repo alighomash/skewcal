@@ -1,0 +1,404 @@
+<title>Skewcal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a drafting-table workspace on 5 mm graph paper; four workflow tabs,
+   the Measure tab splits into an input rail and a results sheet. */
+:root {
+  --paper: #f3f5f6;
+  --surface: #ffffff;
+  --surface-2: #eef1f4;
+  --ink: #142029;
+  --muted: #586774;
+  --rule: #d3dae0;
+  --grid: rgba(28, 72, 140, 0.055);
+  --accent: #2448c8;          /* layout-fluid blue */
+  --accent-soft: rgba(36, 72, 200, 0.10);
+  --on-accent: #ffffff;
+  --mark: #d2362b;            /* scribe red: axes, rejected holes */
+  --mark-soft: rgba(210, 54, 43, 0.12);
+  --ok: #1d7f49;
+  --ok-soft: rgba(29, 127, 73, 0.12);
+  --warn: #9a6408;
+  --warn-soft: rgba(176, 116, 12, 0.14);
+  --bad: #b8322a;
+  --bad-soft: rgba(184, 50, 42, 0.12);
+  --shadow: 0 1px 2px rgba(20, 32, 41, 0.06), 0 6px 18px rgba(20, 32, 41, 0.06);
+
+  --f-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --r: 10px;
+  --gutter: clamp(16px, 3vw, 32px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e1318; --surface: #151c23; --surface-2: #1b242d; --ink: #e5ebf0; --muted: #94a3b0;
+    --rule: #2a3540; --grid: rgba(120, 160, 230, 0.05); --accent: #8aa2ff; --accent-soft: rgba(138, 162, 255, 0.14);
+    --on-accent: #0b1020; --mark: #ff6f61; --mark-soft: rgba(255, 111, 97, 0.14); --ok: #4cc38a; --ok-soft: rgba(76, 195, 138, 0.14);
+    --warn: #e2ad52; --warn-soft: rgba(226, 173, 82, 0.15); --bad: #ff7a6e; --bad-soft: rgba(255, 122, 110, 0.14);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0e1318; --surface: #151c23; --surface-2: #1b242d; --ink: #e5ebf0; --muted: #94a3b0;
+  --rule: #2a3540; --grid: rgba(120, 160, 230, 0.05); --accent: #8aa2ff; --accent-soft: rgba(138, 162, 255, 0.14);
+  --on-accent: #0b1020; --mark: #ff6f61; --mark-soft: rgba(255, 111, 97, 0.14); --ok: #4cc38a; --ok-soft: rgba(76, 195, 138, 0.14);
+  --warn: #e2ad52; --warn-soft: rgba(226, 173, 82, 0.15); --bad: #ff7a6e; --bad-soft: rgba(255, 122, 110, 0.14);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 19px 19px;   /* ~5 mm at 96 dpi */
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.55;
+}
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: var(--gutter); padding-block: 0 48px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 600; line-height: 1.1; text-wrap: balance; margin: 0; }
+h2 { font-size: 1.65rem; letter-spacing: 0.01em; }
+h3 { font-size: 1.15rem; letter-spacing: 0.02em; }
+p { margin: 0; }
+a { color: var(--accent); }
+code, .mono { font-family: var(--f-mono); font-size: 0.92em; }
+.label {
+  font-family: var(--f-display); font-weight: 600; font-size: 0.82rem;
+  text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted);
+}
+.muted { color: var(--muted); }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* ---------- masthead ---------- */
+.mast { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-block: 22px 14px; }
+.brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.brand svg { flex: none; }
+.brand h1 { font-size: 2.1rem; font-weight: 700; letter-spacing: 0.01em; }
+.brand p { color: var(--muted); font-size: 0.95rem; }
+.engine {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;
+  border: 1px solid var(--rule); background: var(--surface); font-size: 0.85rem; color: var(--muted);
+}
+.engine i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.engine[data-state="loading"] i { background: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
+.engine[data-state="ready"] i { background: var(--ok); }
+.engine[data-state="failed"] i { background: var(--bad); }
+@keyframes pulse { 50% { opacity: 0.3; } }
+
+/* ---------- tabs (the workflow is a real sequence, so the steps are numbered) ---------- */
+.tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-block: 6px 22px; }
+.tab {
+  display: flex; align-items: baseline; gap: 10px; text-align: left; cursor: pointer;
+  padding: 10px 14px; border-radius: var(--r); border: 1px solid var(--rule); background: var(--surface);
+  color: var(--ink); font: inherit; min-width: 0;
+}
+.tab b { font-family: var(--f-mono); font-weight: 500; color: var(--muted); font-size: 0.85rem; }
+.tab span { font-family: var(--f-display); font-weight: 600; font-size: 1.12rem; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab small { display: block; color: var(--muted); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab:hover { border-color: var(--accent); }
+.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.tab[aria-selected="true"] b, .tab[aria-selected="true"] small { color: var(--on-accent); opacity: 0.85; }
+@media (max-width: 760px) {
+  .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ---------- generic pieces ---------- */
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); padding: 18px; min-width: 0; }
+.card > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+  padding: 9px 16px; border-radius: 8px; border: 1px solid var(--rule); background: var(--surface);
+  color: var(--ink); font: 500 0.92rem var(--f-body); text-decoration: none;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { filter: brightness(1.08); color: var(--on-accent); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.small { padding: 5px 10px; font-size: 0.83rem; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; background: var(--surface-2); }
+.seg button { border: 0; background: transparent; padding: 7px 14px; font: 500 0.9rem var(--f-body); color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 500; white-space: nowrap; }
+.chip.ok { background: var(--ok-soft); color: var(--ok); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.chip.info { background: var(--accent-soft); color: var(--accent); }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 0.85rem; color: var(--muted); }
+.field input, .field select {
+  font: 0.95rem var(--f-mono); padding: 7px 9px; border-radius: 7px; border: 1px solid var(--rule);
+  background: var(--surface); color: var(--ink); width: 100%;
+}
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.note { font-size: 0.86rem; color: var(--muted); }
+.toast {
+  position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--paper); padding: 9px 16px; border-radius: 8px; font-size: 0.9rem; z-index: 10;
+  box-shadow: var(--shadow); max-width: calc(100% - 32px);
+}
+.panel[hidden] { display: none; }
+
+/* ---------- measure tab ---------- */
+.measure { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 960px) { .measure { grid-template-columns: minmax(0, 1fr); } }
+.drop {
+  border: 1.5px dashed var(--rule); border-radius: var(--r); padding: 18px; text-align: center; cursor: pointer;
+  background: var(--surface-2); transition: border-color 0.15s, background 0.15s;
+}
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop strong { display: block; font-family: var(--f-display); font-size: 1.15rem; font-weight: 600; letter-spacing: 0.02em; }
+.files { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.files li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 0.88rem; padding: 6px 8px; border-radius: 7px; background: var(--surface-2); }
+.files li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--f-mono); font-size: 0.82rem; }
+.files button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; padding: 2px 4px; }
+.samples { display: flex; flex-direction: column; gap: 6px; }
+.progress { height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.progress div { height: 100%; width: 0; background: var(--accent); transition: width 0.3s; }
+
+.sheet { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.banner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 0.88rem; padding: 8px 12px; border-radius: 8px; background: var(--accent-soft); color: var(--ink); }
+.readout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; align-items: stretch; }
+@media (max-width: 720px) { .readout { grid-template-columns: minmax(0, 1fr); } }
+.angle { display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+.angle .big { white-space: nowrap; font-family: var(--f-mono); font-weight: 500; font-size: clamp(2.4rem, 5vw, 3.4rem); line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.angle .pm { font-size: 1.2rem; color: var(--muted); white-space: nowrap; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
+.fact .v { font-family: var(--f-mono); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.fact .s { font-size: 0.82rem; color: var(--muted); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+@media (max-width: 860px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+svg.chart { width: 100%; height: auto; display: block; }
+svg.chart text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted); }
+svg.chart .t-ink { fill: var(--ink); }
+svg.chart .t-accent { fill: var(--accent); }
+svg.chart .t-mark { fill: var(--mark); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.82rem; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.viewer-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.overlay { position: relative; border-radius: 8px; overflow: auto; background: var(--surface-2); max-height: 560px; }
+.overlay img { display: block; width: 100%; cursor: zoom-in; }
+.overlay.zoom img { width: 220%; max-width: none; cursor: zoom-out; }
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.checks li { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 12px; padding: 9px 0; border-top: 1px solid var(--rule); align-items: baseline; }
+.checks li:first-child { border-top: 0; }
+.checks .what { font-weight: 500; }
+.checks .why { font-size: 0.86rem; color: var(--muted); }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+th { text-align: left; font-family: var(--f-display); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.78rem; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--rule); font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+details.report summary { cursor: pointer; font-weight: 500; }
+pre.report { margin: 12px 0 0; padding: 14px; border-radius: 8px; background: var(--surface-2); font: 0.8rem/1.5 var(--f-mono); overflow-x: auto; white-space: pre; }
+.errors { font-size: 0.86rem; color: var(--bad); }
+
+/* ---------- guide tabs ---------- */
+.guide { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .guide { grid-template-columns: minmax(0, 1fr); } }
+.lede { max-width: 68ch; margin-bottom: 18px; color: var(--muted); }
+ol.steps { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 8px; }
+ol.steps li::marker { font-family: var(--f-mono); color: var(--accent); }
+ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 6px; }
+.spec { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.spec div { padding: 10px; border-radius: 8px; background: var(--surface-2); }
+.spec .v { font-family: var(--f-mono); font-size: 1.05rem; }
+.cmd { display: flex; gap: 8px; align-items: stretch; }
+.cmd code { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); overflow-x: auto; white-space: nowrap; font-size: 0.84rem; }
+.badge-rec { font-family: var(--f-display); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72rem; color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <div class="brand">
+      <svg width="46" height="46" viewBox="0 0 46 46" aria-hidden="true">
+        <rect x="1" y="1" width="44" height="44" rx="9" fill="var(--accent)"/>
+        <path d="M11 35 L14 11 L37 11 L34 35 Z" fill="none" stroke="var(--on-accent)" stroke-width="2.4" stroke-linejoin="round"/>
+        <g fill="var(--on-accent)"><circle cx="17.5" cy="17" r="2"/><circle cx="27.5" cy="17" r="2"/><circle cx="16.5" cy="28" r="2"/><circle cx="26.5" cy="28" r="2"/></g>
+      </svg>
+      <div>
+        <h1>Skewcal</h1>
+        <p>Measure your 3D printer's XY skew from a scan or a phone photo, then correct it.</p>
+      </div>
+    </div>
+    <div class="engine" id="engine" data-state="idle" role="status" aria-live="polite"><i></i><span id="engineText">Analysis runs in your browser. Images are not uploaded.</span></div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Workflow">
+    <button class="tab" role="tab" id="tab-print" aria-controls="panel-print" aria-selected="false" data-tab="print"><b>1</b><div style="min-width:0"><span>Print the plate</span><small>STL and reference sheet</small></div></button>
+    <button class="tab" role="tab" id="tab-capture" aria-controls="panel-capture" aria-selected="false" data-tab="capture"><b>2</b><div style="min-width:0"><span>Scan or photograph</span><small>Two images, plate turned 90°</small></div></button>
+    <button class="tab" role="tab" id="tab-measure" aria-controls="panel-measure" aria-selected="true" data-tab="measure"><b>3</b><div style="min-width:0"><span>Measure</span><small>Skew, scale, quality</small></div></button>
+    <button class="tab" role="tab" id="tab-correct" aria-controls="panel-correct" aria-selected="false" data-tab="correct"><b>4</b><div style="min-width:0"><span>Correct</span><small>Slicer script or G-code</small></div></button>
+  </nav>
+
+  <!-- ===================== 1 PRINT ===================== -->
+  <section class="panel" id="panel-print" role="tabpanel" aria-labelledby="tab-print" hidden>
+    <p class="lede">Print one flat test plate. Its 81 holes sit on an exact 12.5 mm grid. Skewcal finds the centre of every hole, so hole size, flow and elephant's foot don't affect the result.</p>
+    <div class="guide">
+      <div class="card stack">
+        <header><h2>Test plate</h2><span class="chip info">Any FDM printer up to 120 mm bed</span></header>
+        <div id="plateDrawing"></div>
+        <div class="spec">
+          <div><div class="label">Size</div><div class="v">114 × 114 × 1.6 mm</div></div>
+          <div><div class="label">Holes</div><div class="v">9 × 9, Ø4 mm</div></div>
+          <div><div class="label">Pitch</div><div class="v">12.5 mm</div></div>
+        </div>
+        <div class="row">
+          <button class="btn primary" id="saveStl">Save plate STL</button>
+          <span class="note" id="stlNote">Saved as a .zip with the STL inside.</span>
+        </div>
+      </div>
+      <div class="card stack">
+        <h3>Slicing rules</h3>
+        <ul class="rules">
+          <li><strong>Don't rotate or mirror it in the slicer.</strong> The three small holes mark the origin and the X and Y directions. The origin hole must end up at the front left of the bed.</li>
+          <li>Use your normal print settings, without a brim. A brim makes the plate edge hard to find.</li>
+          <li>Dark filament is easiest. Light filament works if something dark is behind the holes when you scan.</li>
+          <li>To check a correction, print the plate again with the correction turned on and measure it the same way.</li>
+        </ul>
+        <hr style="border:0;border-top:1px solid var(--rule);margin:4px 0">
+        <h3>Reference sheet <span class="muted" style="font-family:var(--f-body);font-size:0.85rem;font-weight:400">phone photos only</span></h3>
+        <p class="note">Print at <strong>100% / Actual size</strong>. Use the dark-window version for light-coloured plates. After printing, measure the two arrowed spans for exact scale.</p>
+        <div class="row" id="sheetButtons">
+          <button class="btn small" data-sheet="letter">Letter</button>
+          <button class="btn small" data-sheet="letter_dark">Letter, dark window</button>
+          <button class="btn small" data-sheet="a4">A4</button>
+          <button class="btn small" data-sheet="a4_dark">A4, dark window</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 2 CAPTURE ===================== -->
+  <section class="panel" id="panel-capture" role="tabpanel" aria-labelledby="tab-capture" hidden>
+    <p class="lede">Take at least two images and <strong>turn the plate 90° between them</strong>. No scanner or paper sheet is perfectly square. Turning the plate flips the sign of that error, so Skewcal can measure it and remove it.</p>
+    <div class="guide">
+      <div class="card stack">
+        <header><h2>Flatbed scanner</h2><span class="badge-rec">Most accurate</span></header>
+        <div id="turnDrawing"></div>
+        <ol class="steps">
+          <li>Lay the plate on the glass, either side down, near the middle.</li>
+          <li>Scan at <strong>600 dpi</strong>, greyscale or colour. Save as <strong>TIFF or PNG</strong> so the resolution is stored in the file.</li>
+          <li>Turn the plate 90° on the glass and scan again. Don't rotate the image afterwards; the plate itself has to move.</li>
+          <li>Open the <strong>Measure</strong> tab, choose Scanner, and add both files.</li>
+        </ol>
+        <p class="note">JPEG scans work too if the file keeps its dpi. Otherwise enter the dpi by hand.</p>
+      </div>
+      <div class="card stack">
+        <header><h2>Phone camera</h2><span class="chip warn">Scale less reliable</span></header>
+        <ol class="steps">
+          <li>Print the reference sheet at 100% and tape it to a flat, hard table.</li>
+          <li>Lay the plate inside the window, between the corner ticks.</li>
+          <li>Shoot from 30–40 cm with the 2× or 3× lens, the whole sheet in frame, soft even light, no flash.</li>
+          <li>Turn the plate 90° on the sheet and take another photo. Turning the phone doesn't count.</li>
+          <li>Use the original files. Photos sent through chat apps are shrunk and lose the focal length.</li>
+        </ol>
+        <p class="note">The skew angle from photos matches scans closely. Absolute scale depends on the sheet printing at exactly 100% and the plate lying flat, so enter your measured spans when you have them.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 3 MEASURE ===================== -->
+  <section class="panel" id="panel-measure" role="tabpanel" aria-labelledby="tab-measure">
+    <div class="measure">
+      <aside class="card stack" aria-label="Images to analyse">
+        <div class="row" style="justify-content:space-between">
+          <h2>Your images</h2>
+          <div class="seg" role="group" aria-label="Image type">
+            <button type="button" id="modeScan" aria-pressed="true">Scanner</button>
+            <button type="button" id="modePhoto" aria-pressed="false">Phone</button>
+          </div>
+        </div>
+        <label class="drop" id="drop" for="fileInput">
+          <strong>Add images</strong>
+          <span class="note" id="dropHint">Drop two or more scans here, or click to choose. TIFF, PNG or JPEG.</span>
+          <input type="file" id="fileInput" multiple accept="image/*,.tif,.tiff,.heic,.heif" hidden>
+        </label>
+        <ul class="files" id="fileList"></ul>
+        <div id="scanOpts" class="fields">
+          <div class="field"><label for="optDpi">Scan dpi (if not in file)</label><input id="optDpi" type="number" min="100" max="4800" step="1" placeholder="auto"></div>
+        </div>
+        <div id="photoOpts" class="stack" hidden>
+          <div class="fields">
+            <div class="field"><label for="optSpanX">Sheet span X, mm</label><input id="optSpanX" type="number" step="0.05" placeholder="174.0"></div>
+            <div class="field"><label for="optSpanY">Sheet span Y, mm</label><input id="optSpanY" type="number" step="0.05" placeholder="234.0"></div>
+          </div>
+          <label class="row note" for="optWarp"><input type="checkbox" id="optWarp" checked> Model a slightly bowed plate</label>
+        </div>
+        <button class="btn primary" id="runBtn" disabled>Measure</button>
+        <div class="progress" id="progress" hidden><div></div></div>
+        <p class="note" id="runNote">The first run loads the analysis engine (about 30 MB, phone mode 50 MB). Later runs start straight away.</p>
+        <hr style="border:0;border-top:1px solid var(--rule);margin:2px 0">
+        <div class="stack" style="gap:8px">
+          <span class="label">Or try sample scans</span>
+          <div class="samples" id="samples"></div>
+        </div>
+      </aside>
+
+      <div class="sheet" id="results" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <!-- ===================== 4 CORRECT ===================== -->
+  <section class="panel" id="panel-correct" role="tabpanel" aria-labelledby="tab-correct" hidden>
+    <p class="lede">Most printer firmware can't correct skew, so Skewcal corrects the G-code instead. It moves every XY coordinate by the inverse of the measured skew about the bed centre. Arcs are converted to short lines.</p>
+    <div class="card stack" style="margin-bottom:20px">
+      <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+        <div class="field"><label for="corAngle">Measured XY angle, °</label><input id="corAngle" type="number" step="0.0001" min="87" max="93"></div>
+        <div class="field"><label for="corBed">Printer / bed centre</label>
+          <select id="corBed">
+            <option value="90,90">Prusa MINI / MINI+ (90, 90)</option>
+            <option value="125,105">Prusa MK3S / MK4 / CORE One (125, 105)</option>
+            <option value="180,180">Prusa XL (180, 180)</option>
+            <option value="custom">Other…</option>
+          </select>
+        </div>
+        <div class="field" id="corCustomWrap" hidden><label for="corCustom">Bed centre x,y in mm</label><input id="corCustom" type="text" placeholder="110,110"></div>
+      </div>
+      <p class="note" id="corSource"></p>
+    </div>
+    <div class="guide">
+      <div class="card stack">
+        <header><h2>PrusaSlicer post-processing</h2><span class="badge-rec">Set once</span></header>
+        <p>Every file you slice is corrected automatically. Needs Python 3, which macOS and Linux already have.</p>
+        <ol class="steps">
+          <li><button class="btn small" id="saveScript">Save skew_gcode.py</button> and unzip it somewhere permanent.</li>
+          <li>In PrusaSlicer open <strong>Print Settings → Output options → Post-processing scripts</strong>.</li>
+          <li>Paste this line, with the real path to the file:</li>
+        </ol>
+        <div class="seg" role="group" aria-label="Operating system">
+          <button type="button" id="osMac" aria-pressed="true">macOS / Linux</button>
+          <button type="button" id="osWin" aria-pressed="false">Windows</button>
+        </div>
+        <div class="cmd"><code id="cmdLine"></code><button class="btn small" id="copyCmd">Copy</button></div>
+        <p class="note">Turn off <strong>Printer Settings → General → Supports binary G-code</strong>. The script can only edit text G-code.</p>
+      </div>
+      <div class="card stack">
+        <header><h2>Correct one file here</h2></header>
+        <p>For other slicers, or to try it first. Pick a plain-text .gcode file. It's corrected in your browser and saved as a .zip.</p>
+        <label class="drop" id="gdrop" for="gInput">
+          <strong>Add a G-code file</strong>
+          <span class="note" id="gHint">.gcode, not binary .bgcode</span>
+          <input type="file" id="gInput" accept=".gcode,.gco,.g,text/plain" hidden>
+        </label>
+        <div class="progress" id="gProgress" hidden><div></div></div>
+        <p class="note" id="gNote"></p>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="app.js"></script>
