@@ -819,7 +819,9 @@ const TABLETS = [
   { name: "iPad Pro 13-inch (M4)", px: [2064, 2752], ppi: 264 },
   { name: "iPad Pro 12.9-inch, iPad Air 13-inch", px: [2048, 2732], ppi: 264 },
   { name: "iPad Pro 11-inch (M4)", px: [1668, 2420], ppi: 264 },
-  { name: "iPad Pro 11-inch (2018–2022)", px: [1668, 2388], ppi: 264 },
+  // Apple quotes 264 ppi, rounded. The 1st-4th gen 11-inch is 264.8 (11.0-inch diagonal):
+  // the 100 mm bar drawn at 264 measured 99.7 mm with calipers on a 3rd gen (MHQU3LL/A).
+  { name: "iPad Pro 11-inch (1st–4th gen, 2018–2022)", px: [1668, 2388], ppi: 264.8, checked: true },
   { name: "iPad Air 11-inch / 10.9-inch, iPad 10th gen / A16", px: [1640, 2360], ppi: 264 },
   { name: "iPad 10.2-inch (7th–9th gen)", px: [1620, 2160], ppi: 264 },
   { name: "iPad mini (too small)", px: [1488, 2266], ppi: 326 },
@@ -833,7 +835,7 @@ function initTablet() {
   const sel = $("#tabModel");
   const px = screenPx();
   const hit = TABLETS.findIndex((t) => Math.abs(t.px[0] - px[0]) <= 2 && Math.abs(t.px[1] - px[1]) <= 2);
-  sel.innerHTML = TABLETS.map((t, i) => `<option value="${i}">${esc(t.name)}${i === hit ? " (this device)" : ""}</option>`).join("")
+  sel.innerHTML = TABLETS.map((t, i) => `<option value="${i}">${esc(t.name)}${t.checked ? ", calibrated" : ""}${i === hit ? " (this device)" : ""}</option>`).join("")
     + '<option value="custom">Other screen: enter its pixels per inch</option>';
   sel.value = hit >= 0 ? String(hit) : "custom";
   const syncSel = () => { $("#tabPpiWrap").hidden = sel.value !== "custom"; };
