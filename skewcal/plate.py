@@ -265,6 +265,83 @@ def write_stl(path, V, F, name="skewcal_plate"):
 # Breakaway cube: four upright walls (X-Z and Y-Z) and the XY plate as its floor
 # ---------------------------------------------------------------------------
 
+# ---- raised labels: a small stroke font (cell 4 x 6 units, y up) -------------
+_GLYPHS = {
+    "A": [(0, 0, 2, 6), (2, 6, 4, 0), (1, 3, 3, 3)],
+    "B": [(0, 0, 0, 6), (0, 6, 3, 6), (3, 6, 4, 5), (4, 5, 4, 4), (4, 4, 3, 3), (0, 3, 3, 3), (3, 3, 4, 2),
+          (4, 2, 4, 1), (4, 1, 3, 0), (3, 0, 0, 0)],
+    "C": [(4, 6, 1, 6), (1, 6, 0, 5), (0, 5, 0, 1), (0, 1, 1, 0), (1, 0, 4, 0)],
+    "E": [(4, 6, 0, 6), (0, 6, 0, 0), (0, 0, 4, 0), (0, 3, 3, 3)],
+    "F": [(0, 0, 0, 6), (0, 6, 4, 6), (0, 3, 3, 3)],
+    "G": [(4, 5, 3, 6), (3, 6, 1, 6), (1, 6, 0, 5), (0, 5, 0, 1), (0, 1, 1, 0), (1, 0, 3, 0), (3, 0, 4, 1),
+          (4, 1, 4, 3), (4, 3, 2, 3)],
+    "H": [(0, 0, 0, 6), (4, 0, 4, 6), (0, 3, 4, 3)],
+    "I": [(2, 0, 2, 6), (1, 6, 3, 6), (1, 0, 3, 0)],
+    "K": [(0, 0, 0, 6), (4, 6, 0, 2), (1, 3, 4, 0)],
+    "L": [(0, 6, 0, 0), (0, 0, 4, 0)],
+    "N": [(0, 0, 0, 6), (0, 6, 4, 0), (4, 0, 4, 6)],
+    "O": [(0, 1, 0, 5), (0, 5, 1, 6), (1, 6, 3, 6), (3, 6, 4, 5), (4, 5, 4, 1), (4, 1, 3, 0), (3, 0, 1, 0), (1, 0, 0, 1)],
+    "R": [(0, 0, 0, 6), (0, 6, 3, 6), (3, 6, 4, 5), (4, 5, 4, 4), (4, 4, 3, 3), (3, 3, 0, 3), (2, 3, 4, 0)],
+    "T": [(0, 6, 4, 6), (2, 6, 2, 0)],
+    "X": [(0, 0, 4, 6), (0, 6, 4, 0)],
+    "Y": [(0, 6, 2, 3), (4, 6, 2, 3), (2, 3, 2, 0)],
+    "Z": [(0, 6, 4, 6), (4, 6, 0, 0), (0, 0, 4, 0)],
+    "^": [(2, 0, 2, 6), (0, 4, 2, 6), (2, 6, 4, 4)],          # arrow: up
+    " ": [],
+}
+
+
+def text_segments(text, u0, v0, height, mirror=False):
+    """Stroke segments (u0, v0, u1, v1) in plate coordinates for `text`, starting at
+    (u0, v0) (bottom-left of the first letter) and running toward +u, or toward
+    -u with mirrored glyphs when the face is seen from its other side."""
+    k = height / 6.0
+    adv = 5.3 * k
+    out = []
+    for i, ch in enumerate(text.upper()):
+        for a, b, c, d in _GLYPHS[ch]:
+            if mirror:
+                out.append((u0 - (i * adv + a * k), v0 + b * k, u0 - (i * adv + c * k), v0 + d * k))
+            else:
+                out.append((u0 + i * adv + a * k, v0 + b * k, u0 + i * adv + c * k, v0 + d * k))
+    return out
+
+
+def text_width(text, height):
+    return (len(text) * 5.3 - 1.3) * height / 6.0
+
+
+def _stroke_prism(seg, w0, w1, width):
+    """Closed prism for one stroke: a rectangle along the segment (in plate x/y,
+    with round-ish overlap at the ends), extruded through plate z from w0 to w1."""
+    x0, y0, x1, y1 = seg
+    dx, dy = x1 - x0, y1 - y0
+    L = math.hypot(dx, dy) or 1.0
+    ux, uy = dx / L, dy / L
+    nx, ny = -uy * width / 2, ux * width / 2
+    ex, ey = ux * width / 2, uy * width / 2
+    q = [(x0 - ex + nx, y0 - ey + ny), (x0 - ex - nx, y0 - ey - ny),
+         (x1 + ex - nx, y1 + ey - ny), (x1 + ex + nx, y1 + ey + ny)]
+    a = sum(q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1] for i in range(4))
+    if a < 0:
+        q = q[::-1]                                   # counter-clockwise seen from +z
+    V = np.array([[x, y, w0] for x, y in q] + [[x, y, w1] for x, y in q], float)
+    F = [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7]]
+    for i in range(4):
+        j = (i + 1) % 4
+        F += [[i, j, j + 4], [i, j + 4, i + 4]]
+    return V, np.array(F)
+
+
+def label_meshes(spec: PlateSpec, segments, top_side=True, depth=0.6, width=0.9):
+    """Raised strokes on one face of a plate (in build_mesh coordinates): the top
+    face (z = thickness) or the bottom face (z = 0, raised downward)."""
+    off = spec.edge
+    t = spec.thickness
+    w0, w1 = (t, t + depth) if top_side else (-depth, 0.0)
+    return [_stroke_prism((a + off, b + off, c + off, d + off), w0, w1, width) for a, b, c, d in segments]
+
+
 CUBE_GAP = 0.8                       # between walls at the corners (wider than an extrusion line)
 CUBE_TAB_Z = (0.0, 28.0, 56.0, 84.0, 112.0)
 CUBE_TAB_H = 1.0
@@ -312,13 +389,40 @@ def build_cube(floor: PlateSpec = None):
     parts = []
     Vx, Fx = build_mesh(xz)
     Vy, Fy = build_mesh(yz)
-    parts.append(_place(Vx, Fx, along_x, (0, 0, 0)))                 # front
-    parts.append(_place(Vy, Fy, along_y, (S - t, 0, 0)))             # right
-    parts.append(_place(Vx, Fx, along_x, (S - W, S - t, 0)))         # back
-    parts.append(_place(Vy, Fy, along_y, (0, S - W, 0)))             # left
+    # name and up-arrow, raised on each wall's outer face in the border above the top
+    # row of holes. Seen from outside, +u runs to the right on the front and right
+    # walls but to the left on the back and left walls, so those are laid out mirrored.
+    h_txt = 5.0
+    v_txt = xz.span + (xz.edge + xz.hole_d / 2) / 2 - h_txt / 2
+    lo, hi = -xz.edge + 3.0, xz.span + xz.edge - 3.0
+    walls = [  # name, spec, mesh, rows, offset, outer face is the plate's top (z = t) side, mirrored
+        ("FRONT XZ", xz, (Vx, Fx), along_x, (0, 0, 0), False, False),
+        ("RIGHT YZ", yz, (Vy, Fy), along_y, (S - t, 0, 0), True, False),
+        ("BACK XZ", xz, (Vx, Fx), along_x, (S - W, S - t, 0), True, True),
+        ("LEFT YZ", yz, (Vy, Fy), along_y, (0, S - W, 0), False, True),
+    ]
+    labels = {}
+    for name, sp, mesh, R, off, outer_top, mir in walls:
+        parts.append(_place(*mesh, R, off))
+        aw = text_width("^", h_txt)
+        if mir:
+            segs = text_segments(name, hi, v_txt, h_txt, True) + text_segments("^", lo + aw, v_txt, h_txt, True)
+        else:
+            segs = text_segments(name, lo, v_txt, h_txt) + text_segments("^", hi - aw, v_txt, h_txt)
+        labels[name.split()[0].lower()] = segs
+        for Vl, Fl in label_meshes(sp, segs, top_side=outer_top):
+            parts.append(_place(Vl, Fl, R, off))
     Vf, Ff = build_mesh(floor)
     o = (S - floor.size) / 2
     parts.append((Vf + [o, o, 0.0], Ff))
+    # floor: raised on its top face in the front border; the arrow points to +Y (the back)
+    # it must stay clear of the hole openings, which are top_d wide at the top surface
+    hf, wf = 3.0, 0.7
+    vf = -max(floor.top_d, floor.hole_d) / 2 - 0.3 - wf / 2 - hf
+    fsegs = text_segments("FLOOR XY ^", floor.span / 2 - text_width("FLOOR XY ^", hf) / 2, vf, hf)
+    labels["floor"] = fsegs
+    for Vl, Fl in label_meshes(floor, fsegs, top_side=True, depth=0.4, width=wf):
+        parts.append((Vl + [o, o, 0.0], Fl))
     e, c = 0.4, 0.3                                                  # tab overlap into walls, inset across thickness
     for z0 in CUBE_TAB_Z:
         z1 = z0 + CUBE_TAB_H
@@ -329,4 +433,5 @@ def build_cube(floor: PlateSpec = None):
     V, F, off = [], [], 0
     for Vp, Fp in parts:
         V.append(Vp); F.append(Fp + off); off += len(Vp)
+    L["labels"] = labels
     return np.vstack(V), np.vstack(F), L

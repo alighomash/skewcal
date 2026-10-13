@@ -174,12 +174,12 @@ The breakaway cube measures all three angles in one print. It is `skewcal_cube.s
 
 - **Four upright walls** carry the same 9 × 9 hole grid. Front and back walls measure X–Z; left and right walls measure Y–Z. The walls are joined at the corners by small tabs, so they print without wobbling.
 - **The floor** is the normal thin-rim plate, lying loose inside the walls. It measures X–Y as usual.
-- **Small holes in each wall's top border** tell them apart: one hole on the front and back walls, two on the left and right walls.
+- **Raised labels** on each piece's outer face say what it is and which way is up: `FRONT XZ`, `BACK XZ`, `LEFT YZ`, `RIGHT YZ` and `FLOOR XY`. The arrow points to the top as printed; on the floor it points to the back (+Y). The walls also have one or two small holes in their top border as a second cue.
 
 1. **Print it as exported** (don't rotate it), with the skew correction **off**.
 2. **Snap the walls apart** at the corner tabs. The small nubs left on the edges don't matter.
 3. **Scan or photograph each wall** lying flat, exactly like the plate: scanner, tablet or paper sheet. Take two images per wall, turned 90° between them.
-   - **Turn it, don't flip it over,** within a pair. Flipping and turning together doesn't cancel the scanner's own error, and the report will warn that there's no reversal.
+   - **Lay every piece letters-up.** The raised letters must not touch the glass or screen. Letters-up also means you never flip a wall by mistake: flipping and turning together doesn't cancel the scanner's own error.
 4. **Measure each pair of walls together**, with the wall plate file and the plane:
 
 ```bash

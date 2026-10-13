@@ -811,11 +811,11 @@ function cubeSvg() {
     <rect x="${o + (S - 114 * s) / 2}" y="${o + (S - 114 * s) / 2}" width="${114 * s}" height="${114 * s}" rx="3" fill="var(--surface-2)" stroke="var(--rule)"/>
     <text x="${o + S / 2}" y="${o + S / 2 - 6}" text-anchor="middle" class="t-ink" style="font-size:12px">floor plate</text>
     <text x="${o + S / 2}" y="${o + S / 2 + 10}" text-anchor="middle">X–Y</text>
-    <text x="${o + S / 2}" y="${o + S + 20}" text-anchor="middle" class="t-mark" style="font-size:11px">front wall · X–Z · 1 hole</text>
-    <text x="${o + S / 2}" y="${o - 8}" text-anchor="middle" class="t-mark" style="font-size:11px">back wall · X–Z</text>
-    <text x="${o + S + 12}" y="${o + S / 2}" class="t-mark" style="font-size:11px" transform="rotate(90 ${o + S + 12} ${o + S / 2})" text-anchor="middle">right · Y–Z · 2 holes</text>
-    <text x="${o - 12}" y="${o + S / 2}" class="t-mark" style="font-size:11px" transform="rotate(-90 ${o - 12} ${o + S / 2})" text-anchor="middle">left · Y–Z</text>
-    <text x="${o}" y="${o + S + 50}" style="font-size:11px">top view · corners joined by snap-off tabs</text></svg>`;
+    <text x="${o + S / 2}" y="${o + S + 20}" text-anchor="middle" class="t-mark" style="font-size:11px">FRONT XZ</text>
+    <text x="${o + S / 2}" y="${o - 8}" text-anchor="middle" class="t-mark" style="font-size:11px">BACK XZ</text>
+    <text x="${o + S + 12}" y="${o + S / 2}" class="t-mark" style="font-size:11px" transform="rotate(90 ${o + S + 12} ${o + S / 2})" text-anchor="middle">RIGHT YZ</text>
+    <text x="${o - 12}" y="${o + S / 2}" class="t-mark" style="font-size:11px" transform="rotate(-90 ${o - 12} ${o + S / 2})" text-anchor="middle">LEFT YZ</text>
+    <text x="${o}" y="${o + S + 50}" style="font-size:11px">top view · raised labels on each outer face · snap-off corner tabs</text></svg>`;
 }
 function drawGuides() {
   const S = 170;

@@ -62,8 +62,9 @@ def cmd_cube(a):
     print(f"Cube {L['S']:.1f} x {L['S']:.1f} x {L['W']:.1f} mm: four {L['W']:.0f} mm walls and the "
           f"{L['floor']:.0f} mm floor plate ({L['floor_clearance']:.1f} mm clearance). Wrote {a.output} and {js}")
     print("Print it as exported (front wall at the front, do not rotate), with the skew correction off.")
-    print("Snap the walls apart at the corner tabs. Front/back walls (one small hole in the top border)")
-    print("measure X-Z; left/right walls (two holes) measure Y-Z; the floor plate measures X-Y:")
+    print("Snap the walls apart at the corner tabs. Each piece is labelled on its outer face (FRONT XZ,")
+    print("BACK XZ, LEFT YZ, RIGHT YZ, FLOOR XY, arrow = up as printed); lay every piece letters-up.")
+    print("Front/back walls measure X-Z, left/right walls Y-Z, the floor plate X-Y:")
     print(f"  skewcal.py scan F1.png F2.png B1.png B2.png --plate {js} --plane xz")
 
 
