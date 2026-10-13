@@ -103,24 +103,24 @@ const commands = {
     return { data: out, overlay, transfer: overlay ? [overlay.buffer] : [] };
   },
 
-  async combine({ mode, names }) {
+  async combine({ mode, names, plane }) {
     await init();
-    const out = JSON.parse(bridge.combine_all(mode, "{}"));
+    const out = JSON.parse(bridge.combine_all(mode, JSON.stringify({ plane: plane || "xy" })));
     // restore the original file names (the filesystem copies use safe names)
     const map = new Map(names.map((n) => [safeName(n), n]));
     for (const im of out.images || []) im.name = map.get(im.name) || im.name;
     return { data: out };
   },
 
-  // args: {name, buffer, angle, scale_x, scale_y, cx, cy}
-  async gcode({ name, buffer, angle, scale_x, scale_y, cx, cy }) {
+  // args: {name, buffer, angle, scale_x, scale_y, cx, cy, xz, yz}
+  async gcode({ name, buffer, angle, scale_x, scale_y, cx, cy, xz = 90, yz = 90 }) {
     await init();
     const stem = safeName(name).replace(/\.(gcode|gco|g)$/i, "");
     const src = "/gcode/in.gcode";
     const outName = stem + "_skewcorrected.gcode";
     const dst = "/gcode/" + outName;
     py.FS.writeFile(src, new Uint8Array(buffer));
-    const res = JSON.parse(bridge.correct_gcode(src, dst, angle, scale_x, scale_y, cx, cy));
+    const res = JSON.parse(bridge.correct_gcode(src, dst, angle, scale_x, scale_y, cx, cy, xz, yz));
     let zip = null;
     if (res.ok) {
       const zipPath = "/gcode/" + stem + "_skewcorrected.zip";

@@ -38,11 +38,31 @@ class PlateSpec:
     # move it. rim = 0 gives the standard plate with straight holes.
     rim: float = 0.6
     top_d: float = 5.6
+    # Cube walls (printed upright, measured for X-Z / Y-Z): the plate's y axis is Z.
+    # id_holes small holes in the top border tell the wall pairs apart (mesh only).
+    wall: bool = False
+    id_holes: int = 0
 
     @classmethod
     def standard(cls, **kw) -> "PlateSpec":
         """The original plate with straight holes."""
         return cls(rim=0.0, top_d=0.0, **kw)
+
+    @classmethod
+    def cube_wall(cls, id_holes=0) -> "PlateSpec":
+        """A breakaway-cube wall: straight holes (they run sideways when printed
+        upright), slightly larger markers because sideways holes print a little
+        closed, and a 118 mm square so the floor plate fits inside the cube."""
+        return cls(rim=0.0, top_d=0.0, margin=7.0, marker_d=2.4, wall=True, id_holes=id_holes)
+
+    def id_points(self) -> np.ndarray:
+        """Centres of the ID holes in the top border (nominal coordinates)."""
+        if not self.id_holes:
+            return np.empty((0, 2))
+        y = self.span + (self.edge + self.hole_d / 2) / 2
+        xs = [self.span / 2] if self.id_holes == 1 else \
+            list(self.span / 2 + 8.0 * (np.arange(self.id_holes) - (self.id_holes - 1) / 2))
+        return np.array([[x, y] for x in xs])
 
     @property
     def thin_rim(self) -> bool:
@@ -95,6 +115,7 @@ class PlateSpec:
         hs = [(x, y, self.hole_d) for _, _, x, y in self.grid_points()]
         hs += [(x, y, self.marker_d) for x, y in self.x_marker()]
         hs += [(x, y, self.marker_d) for x, y in self.y_markers()]
+        hs += [(x, y, self.marker_d) for x, y in self.id_points()]
         return hs
 
     def validate(self):
@@ -129,6 +150,7 @@ class PlateSpec:
         with open(path) as f:
             d = json.load(f)
         d.pop("skewcal_plate", None)
+        d.pop("cube", None)
         # files written before thin-rim plates existed describe straight holes
         d.setdefault("rim", 0.0)
         d.setdefault("top_d", 0.0)
@@ -237,3 +259,74 @@ def write_stl(path, V, F, name="skewcal_plate"):
         rec["n"] = n
         rec["v"] = tris
         f.write(rec.tobytes())
+
+
+# ---------------------------------------------------------------------------
+# Breakaway cube: four upright walls (X-Z and Y-Z) and the XY plate as its floor
+# ---------------------------------------------------------------------------
+
+CUBE_GAP = 0.8                       # between walls at the corners (wider than an extrusion line)
+CUBE_TAB_Z = (0.0, 28.0, 56.0, 84.0, 112.0)
+CUBE_TAB_H = 1.0
+
+
+def _place(V, F, R, t):
+    """Rigidly place a mesh: rows of R give world x/y/z from local x/y/z."""
+    R = np.asarray(R, float)
+    V2 = V @ R.T + np.asarray(t, float)
+    return V2, (F[:, [0, 2, 1]] if np.linalg.det(R) < 0 else F)
+
+
+def _box(x0, x1, y0, y1, z0, z1):
+    V = np.array([[x, y, z] for z in (z0, z1) for y in (y0, y1) for x in (x0, x1)], float)
+    F = np.array([[0, 2, 1], [1, 2, 3], [4, 5, 6], [5, 7, 6],      # bottom (-Z), top (+Z)
+                  [0, 1, 4], [1, 5, 4], [2, 6, 3], [3, 6, 7],      # -Y, +Y
+                  [0, 4, 2], [2, 4, 6], [1, 3, 5], [3, 7, 5]])     # -X, +X
+    return V, F
+
+
+def cube_layout(wall: PlateSpec = None, floor: PlateSpec = None):
+    """Footprint of the breakaway cube. Walls form a pinwheel: each is a full
+    square plate, and each wall's end faces the next wall across CUBE_GAP."""
+    wall = wall or PlateSpec.cube_wall()
+    floor = floor or PlateSpec()
+    W, t = wall.size, wall.thickness
+    S = W + t + CUBE_GAP
+    return dict(W=W, t=t, S=S, inner=S - 2 * t, floor=floor.size,
+                floor_clearance=(S - 2 * t - floor.size) / 2)
+
+
+def build_cube(floor: PlateSpec = None):
+    """Return (V, F, info) for the cube: front/back walls (X-Z, one ID hole),
+    left/right walls (Y-Z, two ID holes), snap-off corner tabs and the floor plate.
+    The parts are separate closed shells; the tabs overlap the walls, which the
+    slicer merges."""
+    floor = floor or PlateSpec()
+    xz, yz = PlateSpec.cube_wall(1), PlateSpec.cube_wall(2)
+    L = cube_layout(xz, floor)
+    W, t, S, g = L["W"], L["t"], L["S"], CUBE_GAP
+    if L["floor_clearance"] < 1.0:
+        raise ValueError("floor plate does not fit inside the cube")
+    along_x = [[1, 0, 0], [0, 0, 1], [0, 1, 0]]     # local x -> +X, local y -> +Z, thickness -> +Y
+    along_y = [[0, 0, 1], [1, 0, 0], [0, 1, 0]]     # local x -> +Y, local y -> +Z, thickness -> +X
+    parts = []
+    Vx, Fx = build_mesh(xz)
+    Vy, Fy = build_mesh(yz)
+    parts.append(_place(Vx, Fx, along_x, (0, 0, 0)))                 # front
+    parts.append(_place(Vy, Fy, along_y, (S - t, 0, 0)))             # right
+    parts.append(_place(Vx, Fx, along_x, (S - W, S - t, 0)))         # back
+    parts.append(_place(Vy, Fy, along_y, (0, S - W, 0)))             # left
+    Vf, Ff = build_mesh(floor)
+    o = (S - floor.size) / 2
+    parts.append((Vf + [o, o, 0.0], Ff))
+    e, c = 0.4, 0.3                                                  # tab overlap into walls, inset across thickness
+    for z0 in CUBE_TAB_Z:
+        z1 = z0 + CUBE_TAB_H
+        parts.append(_box(W - e, S - t + e, c, t - c, z0, z1))          # front-right
+        parts.append(_box(S - t + c, S - c, W - e, S - t + e, z0, z1))  # right-back
+        parts.append(_box(t - e, S - W + e, S - t + c, S - c, z0, z1))  # back-left
+        parts.append(_box(c, t - c, t - e, S - W + e, z0, z1))          # left-front
+    V, F, off = [], [], 0
+    for Vp, Fp in parts:
+        V.append(Vp); F.append(Fp + off); off += len(Vp)
+    return np.vstack(V), np.vstack(F), L

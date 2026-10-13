@@ -1,0 +1,14 @@
+{
+  "skewcal_plate": 1,
+  "n": 9,
+  "pitch": 12.5,
+  "hole_d": 4.0,
+  "marker_d": 2.4,
+  "y_pair_sep": 3.5,
+  "margin": 7.0,
+  "thickness": 1.6,
+  "rim": 0.0,
+  "top_d": 0.0,
+  "wall": true,
+  "id_holes": 0
+}

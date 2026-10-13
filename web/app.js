@@ -7,6 +7,10 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const fx = (v, d) => (v == null || !isFinite(v) ? "–" : Number(v).toFixed(d));
 const sgn = (v, d) => (v == null || !isFinite(v) ? "–" : (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d));
 const IN_ARTIFACT = !!(window.claude && window.claude.use);
+// which printer axes a plate's two grid directions are: the flat plate is X/Y, cube walls X/Z or Y/Z
+const AXES = { xy: ["X", "Y"], xz: ["X", "Z"], yz: ["Y", "Z"] };
+const planeOf = (R) => (R && R.plane) || "xy";
+const lastKey = (plane) => (plane === "xy" ? "last" : "last_" + plane);
 
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem("skewcal:" + k)); } catch { return null; } },
@@ -297,7 +301,8 @@ async function runAnalysis() {
       }
       renderFiles();
     }
-    const c = await engine.call("combine", { mode: state.mode, names: state.files.map((f) => f.name) });
+    const plane = $("#optPlate").value === "cubewall" ? $("#optPlane").value : "xy";
+    const c = await engine.call("combine", { mode: state.mode, names: state.files.map((f) => f.name), plane });
     for (const im of c.data.images || []) {
       const f = state.files.find((x) => x.name === im.name);
       if (f && f.error) im.error = f.error;
@@ -308,7 +313,7 @@ async function runAnalysis() {
     state.view.image = 0;
     if (c.data.ok) {
       state.result = c.data;
-      store.set("last", { theta: c.data.combined.theta, theta_std: c.data.combined.theta_std, when: Date.now() });
+      if (!state.sampleRun) store.set(lastKey(plane), { theta: c.data.combined.theta, theta_std: c.data.combined.theta_std, when: Date.now() });
       $("#runNote").textContent = "Done. Results are on the right.";
     } else {
       state.result = { ok: false, images: c.data.images, mode: state.mode };
@@ -344,9 +349,11 @@ $("#samples").addEventListener("click", async (e) => {
     state.files = files.map((f) => ({ name: f.name, file: f, status: "ready" }));
     setMode(s.mode);
     $("#optPlate").value = s.plate || "thinrim";
+    syncPlane();
     $("#optDpi").value = "";
     renderFiles();
-    await runAnalysis();
+    state.sampleRun = true;               // an example: don't remember it as the visitor's measurement
+    try { await runAnalysis(); } finally { state.sampleRun = false; }
     if (state.result && state.result.ok) state.sample = { key: s.key, title: s.title };
     renderResults();
   } catch {
@@ -373,28 +380,30 @@ function renderResults() {
     return;
   }
   const c = R.combined;
+  const [A, B] = AXES[planeOf(R)];
   const skew = c.theta - 90;
   const per100 = 100 * Math.tan((skew * Math.PI) / 180);
   const diag = Math.SQRT2 * 100 * Math.cos((c.theta * Math.PI) / 180);
   const okImgs = R.images.filter((i) => i.ok);
   const banner = state.sample
     ? `<div class="banner"><span class="chip info">Example</span><span>Sample scans: ${esc(state.sample.title)}. Add your own images on the left to measure your printer.</span></div>` : "";
-  const lean = Math.abs(skew) < 0.02 ? "X and Y are square to within the measurement uncertainty."
-    : skew < 0 ? "The Y axis leans toward +X. Corners at +X+Y and −X−Y are acute."
-    : "The Y axis leans toward −X. Corners at +X+Y and −X−Y are obtuse.";
+  const side = skew < 0 ? "+" : "−";
+  const lean = Math.abs(skew) < 0.02 ? `${A} and ${B} are square to within the measurement uncertainty.`
+    : B === "Z" ? `The Z axis leans toward ${side}${A}, so tall parts lean that way as they rise.`
+    : `The ${B} axis leans toward ${side}${A}. Corners at +${A}+${B} and −${A}−${B} are ${skew < 0 ? "acute" : "obtuse"}.`;
 
   root.innerHTML = `
     ${banner}
     <div class="card readout">
       <div class="angle">
-        <span class="label">XY angle</span>
+        <span class="label">${A}${B} angle</span>
         <div class="row" style="align-items:baseline;gap:4px 12px"><div class="big">${fx(c.theta, 3)}°</div><span class="pm num">± ${fx(c.theta_std, 3)}°</span></div>
         <div class="row">${verdict(skew)}${c.reversal ? '<span class="chip ok">90° turn: scanner error removed</span>' : '<span class="chip warn">No 90° turn</span>'}</div>
         <p class="note">${lean}</p>
       </div>
       <div class="facts">
         <div class="fact"><div class="label">Skew</div><div class="v">${sgn(skew, 3)}°</div><div class="s">from a perfect 90°</div></div>
-        <div class="fact"><div class="label">X drift</div><div class="v">${fx(Math.abs(per100), 2)} mm</div><div class="s">per 100 mm of Y travel</div></div>
+        <div class="fact"><div class="label">${A} drift</div><div class="v">${fx(Math.abs(per100), 2)} mm</div><div class="s">per 100 mm of ${B} travel</div></div>
         <div class="fact"><div class="label">Diagonals</div><div class="v">${fx(Math.abs(diag), 2)} mm</div><div class="s">difference on a 100 mm square</div></div>
         <div class="fact"><div class="label">${R.mode === "scan" ? "Scanner" : okImgs[0].result.reference === "screen" ? "Screen" : "Sheet"} error</div><div class="v">${c.reversal ? sgn(c.frame_bias_deg, 3) + "°" : "not removed"}</div><div class="s">${c.reversal ? "measured and cancelled" : "add a turned image"}</div></div>
       </div>
@@ -402,7 +411,7 @@ function renderResults() {
 
     <div class="grid2">
       <div class="card">
-        <header><h3>Shape of your XY frame</h3><span class="note" id="exag"></span></header>
+        <header><h3>Shape of your ${A}${B} frame</h3><span class="note" id="exag"></span></header>
         <div id="skewDiagram"></div>
       </div>
       <div class="card">
@@ -464,14 +473,17 @@ function renderResults() {
       </div>
     </div>`;
 
-  drawSkew(c.theta);
+  drawSkew(c.theta, A, B);
   drawReversal(okImgs, c);
-  drawScale(c);
+  drawScale(c, A, B);
   drawChecks(R, okImgs);
   drawViewer();
   $("#saveTxt").onclick = () => saveFile("skewcal_report.txt", R.report + "\n");
   $("#saveJson").onclick = () => saveFile("skewcal_report.json", R.report_json);
-  $("#goCorrect").onclick = () => { $("#corAngle").value = c.theta.toFixed(4); showTab("correct"); };
+  $("#goCorrect").onclick = () => {
+    $({ xy: "#corAngle", xz: "#corXz", yz: "#corYz" }[planeOf(R)]).value = c.theta.toFixed(4);
+    showTab("correct");
+  };
   for (const b of $$("[data-kind]", root)) b.onclick = () => { state.view.kind = b.dataset.kind; renderResults(); };
   for (const b of $$("[data-img]", root)) b.onclick = () => { state.view.image = Number(b.dataset.img); renderResults(); };
 }
@@ -492,12 +504,13 @@ function imageTable(R) {
       <td>${relPos(r.rotation_deg, R.images.find((i) => i.ok).result.rotation_deg)}°${r.mirrored ? ", face down" : ""}</td>
       ${photo ? `<td>${fx(r.ref_rms_um, 0)} µm</td><td>${warp == null ? "–" : fx(warp, 1) + " mm"}</td><td>${fx(r.camera_distance_mm, 0)} mm</td>` : ""}</tr>`;
   }).join("");
-  return `<table><thead><tr><th>Image</th><th>XY angle</th><th>±</th><th>Scale X</th><th>Scale Y</th><th>Holes</th><th>Fit rms</th><th>Position</th>
+  const [A, B] = AXES[planeOf(R)];
+  return `<table><thead><tr><th>Image</th><th>${A}${B} angle</th><th>±</th><th>Scale ${A}</th><th>Scale ${B}</th><th>Holes</th><th>Fit rms</th><th>Position</th>
     ${photo ? "<th>Sheet fit</th><th>Plate bow</th><th>Distance</th>" : ""}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 // --- skew diagram: the measured frame, skew exaggerated so it is visible
-function drawSkew(theta) {
+function drawSkew(theta, A = "X", B = "Y") {
   const skew = theta - 90;
   const a = Math.abs(skew);
   const k = Math.max(1, 7 / Math.max(a, 0.05));
@@ -510,14 +523,14 @@ function drawSkew(theta) {
   const mid = phi / 2;
   $("#exag").textContent = k > 1.5 ? `skew drawn ×${Math.round(k)}` : "drawn to scale";
   $("#skewDiagram").innerHTML = `
-  <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Measured XY frame compared with a perfect square">
+  <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Measured ${A}${B} frame compared with a perfect square">
     <defs><marker id="arrM" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--mark)"/></marker></defs>
     <polygon points="${P(0, 0)} ${P(L, 0)} ${P(L, L)} ${P(0, L)}" fill="none" stroke="var(--muted)" stroke-width="1" stroke-dasharray="4 4"/>
     <polygon points="${P(0, 0)} ${P(L, 0)} ${P(L + yx, yy)} ${P(yx, yy)}" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
     <line x1="${ox}" y1="${oy}" x2="${(ox + L + 22).toFixed(1)}" y2="${oy}" stroke="var(--mark)" stroke-width="2" marker-end="url(#arrM)"/>
     <line x1="${ox}" y1="${oy}" x2="${(ox + (L + 22) * Math.cos(phi)).toFixed(1)}" y2="${(oy - (L + 22) * Math.sin(phi)).toFixed(1)}" stroke="var(--mark)" stroke-width="2" marker-end="url(#arrM)"/>
-    <text x="${ox + L + 28}" y="${oy + 4}" class="t-mark" style="font-weight:600;font-size:13px">X</text>
-    <text x="${(ox + (L + 30) * Math.cos(phi)).toFixed(1)}" y="${(oy - (L + 30) * Math.sin(phi)).toFixed(1)}" class="t-mark" text-anchor="middle" style="font-weight:600;font-size:13px">Y</text>
+    <text x="${ox + L + 28}" y="${oy + 4}" class="t-mark" style="font-weight:600;font-size:13px">${A}</text>
+    <text x="${(ox + (L + 30) * Math.cos(phi)).toFixed(1)}" y="${(oy - (L + 30) * Math.sin(phi)).toFixed(1)}" class="t-mark" text-anchor="middle" style="font-weight:600;font-size:13px">${B}</text>
     <path d="${arc}" fill="none" stroke="var(--ink)" stroke-width="1.2"/>
     <text x="${(ox + (arcR + 10) * Math.cos(mid)).toFixed(1)}" y="${(oy - (arcR + 10) * Math.sin(mid) + 4).toFixed(1)}" class="t-ink" style="font-size:12px">${fx(theta, 3)}°</text>
     <text x="${ox + L / 2}" y="${oy + 26}" text-anchor="middle">dashed: perfect 90°</text>
@@ -549,7 +562,7 @@ function drawReversal(imgs, c) {
   const x = (i) => ml + ((i + 0.5) / n) * (W - ml - mr);
   const { ticks, step } = niceTicks(lo, hi, 5);
   const dec = Math.max(0, Math.min(4, -Math.floor(Math.log10(step)) + (step / Math.pow(10, Math.floor(Math.log10(step))) === 2.5 ? 1 : 0)));
-  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="XY angle measured in each image">`;
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Angle measured in each image">`;
   for (const t of ticks) s += `<line x1="${ml}" x2="${W - mr}" y1="${y(t)}" y2="${y(t)}" stroke="var(--rule)" stroke-width="1"/><text x="${ml - 8}" y="${y(t) + 4}" text-anchor="end">${t.toFixed(dec)}°</text>`;
   if (90 > lo && 90 < hi) s += `<line x1="${ml}" x2="${W - mr}" y1="${y(90)}" y2="${y(90)}" stroke="var(--ok)" stroke-dasharray="2 4" stroke-width="1.5"/><text x="${W - mr}" y="${y(90) - 5}" text-anchor="end" style="fill:var(--ok)">square</text>`;
   s += `<rect x="${ml}" width="${W - ml - mr}" y="${y(c.theta + c.theta_std)}" height="${Math.max(1, y(c.theta - c.theta_std) - y(c.theta + c.theta_std))}" fill="var(--accent-soft)"/>`;
@@ -569,17 +582,17 @@ function drawReversal(imgs, c) {
 }
 
 // --- scale bars around 100 %
-function drawScale(c) {
+function drawScale(c, A = "X", B = "Y") {
   const devs = [c.scale_x - 1, c.scale_y - 1].map((d) => d * 100);
   const R = Math.max(0.5, Math.ceil(Math.max(...devs.map(Math.abs)) * 1.25 * 4) / 4);
   const W = 320, rowH = 40, H = rowH * 2 + 26, ml = 22, mr = 78;
   const x = (d) => ml + ((d + R) / (2 * R)) * (W - ml - mr);
-  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="X and Y scale compared with 100 percent">`;
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${A} and ${B} scale compared with 100 percent">`;
   for (const t of [-R, -R / 2, 0, R / 2, R]) {
     s += `<line x1="${x(t)}" x2="${x(t)}" y1="8" y2="${H - 20}" stroke="${t === 0 ? "var(--muted)" : "var(--rule)"}" stroke-width="1"/>`;
     s += `<text x="${x(t)}" y="${H - 4}" text-anchor="middle">${t === 0 ? "100%" : (t > 0 ? "+" : "−") + Math.abs(t) + "%"}</text>`;
   }
-  ["X", "Y"].forEach((ax, i) => {
+  [A, B].forEach((ax, i) => {
     const d = devs[i], yc = 14 + i * rowH + 12;
     s += `<text x="4" y="${yc + 5}" class="t-ink" style="font-weight:600;font-size:13px">${ax}</text>`;
     s += `<rect x="${Math.min(x(0), x(d))}" y="${yc - 7}" width="${Math.max(2, Math.abs(x(d) - x(0)))}" height="14" rx="3" fill="var(--accent)"/>`;
@@ -694,10 +707,11 @@ function drawViewer() {
 }
 
 // ------------------------------------------------------------------ correct tab
-function corAngle() {
-  const v = parseFloat($("#corAngle").value);
+function angleOf(sel) {
+  const v = parseFloat($(sel).value);
   return isFinite(v) ? v : null;
 }
+const corAngle = () => angleOf("#corAngle");
 function corCentre() {
   const sel = $("#corBed").value;
   const txt = sel === "custom" ? $("#corCustom").value : sel;
@@ -705,27 +719,33 @@ function corCentre() {
   return m.length === 2 && m.every(isFinite) ? m : null;
 }
 function renderCorrect() {
-  if (!$("#corAngle").value) {
-    const own = store.get("last");
-    const r = state.result && state.result.ok && !state.sample ? state.result.combined : null;
-    const th = r ? r.theta : own ? own.theta : null;
-    if (th) $("#corAngle").value = th.toFixed(4);
+  const mine = state.result && state.result.ok && !state.sample ? state.result : null;
+  for (const [plane, sel] of [["xy", "#corAngle"], ["xz", "#corXz"], ["yz", "#corYz"]]) {
+    if ($(sel).value) continue;
+    const th = mine && planeOf(mine) === plane ? mine.combined.theta : store.get(lastKey(plane))?.theta;
+    if (th) $(sel).value = th.toFixed(4);
   }
   const src = state.result && state.result.ok && !state.sample ? "Filled in from your latest measurement."
     : store.get("last") ? "Filled in from your last measurement on this device." : "Measure your printer first, or type the XY angle you measured.";
   $("#corSource").textContent = src;
   updateCmd();
 }
+function corFlags() {
+  const out = [];
+  for (const [flag, sel] of [["--xy-angle", "#corAngle"], ["--xz-angle", "#corXz"], ["--yz-angle", "#corYz"]]) {
+    const v = angleOf(sel);
+    if (v != null && Math.abs(v - 90) > 1e-6) out.push(`${flag} ${v.toFixed(4)}`);
+  }
+  return out.length ? out.join(" ") : "--xy-angle 90.0000";
+}
 function updateCmd() {
-  const a = corAngle();
   const c = corCentre();
-  const angle = a == null ? "90.0000" : a.toFixed(4);
   const centre = c && !(c[0] === 90 && c[1] === 90) ? ` --center ${c[0]},${c[1]}` : "";
   $("#cmdLine").textContent = state.os === "mac"
-    ? `/usr/bin/python3 "/path/to/skew_gcode.py" --xy-angle ${angle}${centre};`
-    : `"C:\\Path\\To\\python.exe" "C:\\path\\to\\skew_gcode.py" --xy-angle ${angle}${centre};`;
+    ? `/usr/bin/python3 "/path/to/skew_gcode.py" ${corFlags()}${centre};`
+    : `"C:\\Path\\To\\python.exe" "C:\\path\\to\\skew_gcode.py" ${corFlags()}${centre};`;
 }
-$("#corAngle").addEventListener("input", updateCmd);
+for (const sel of ["#corAngle", "#corXz", "#corYz"]) $(sel).addEventListener("input", updateCmd);
 $("#corCustom").addEventListener("input", updateCmd);
 $("#corBed").addEventListener("change", () => { $("#corCustomWrap").hidden = $("#corBed").value !== "custom"; updateCmd(); });
 $("#osMac").addEventListener("click", () => { state.os = "mac"; $("#osMac").setAttribute("aria-pressed", "true"); $("#osWin").setAttribute("aria-pressed", "false"); updateCmd(); });
@@ -746,8 +766,9 @@ $("#saveScript").addEventListener("click", () => IN_ARTIFACT ? saveAsset("assets
 $("#gInput").addEventListener("change", (e) => { if (e.target.files[0]) correctGcode(e.target.files[0]); e.target.value = ""; });
 
 async function correctGcode(file) {
-  const a = corAngle(), c = corCentre();
-  if (a == null || Math.abs(a - 90) > 3) return toast("Enter the measured XY angle first (between 87° and 93°).");
+  const a = corAngle() ?? 90, xz = angleOf("#corXz") ?? 90, yz = angleOf("#corYz") ?? 90, c = corCentre();
+  if (corAngle() == null && angleOf("#corXz") == null && angleOf("#corYz") == null) return toast("Enter at least one measured angle first.");
+  if ([a, xz, yz].some((v) => Math.abs(v - 90) > 3)) return toast("Angles should be between 87° and 93°.");
   if (!c) return toast("Enter the bed centre as x,y in millimetres.");
   $("#gNote").textContent = engine.stage === "ready" ? "Correcting…" : "Loading the engine, then correcting…";
   setProgress("#gProgress", 30);
@@ -755,10 +776,10 @@ async function correctGcode(file) {
     const buffer = await file.arrayBuffer();
     const head = new Uint8Array(buffer, 0, 4);
     if (String.fromCharCode(...head) === "GCDE") throw new Error("This is binary G-code. Turn off Supports binary G-code in PrusaSlicer's Printer Settings and export again.");
-    const r = await engine.call("gcode", { name: file.name, buffer, angle: a, scale_x: 1, scale_y: 1, cx: c[0], cy: c[1] }, [buffer]);
+    const r = await engine.call("gcode", { name: file.name, buffer, angle: a, scale_x: 1, scale_y: 1, cx: c[0], cy: c[1], xz, yz }, [buffer]);
     setProgress("#gProgress", 100);
     if (!r.data.ok) throw new Error(r.data.error);
-    $("#gNote").textContent = `${r.data.message.replace(/^skew_gcode: /, "")}. Corrected about (${c[0]}, ${c[1]}) for an XY angle of ${a.toFixed(4)}°.`;
+    $("#gNote").textContent = `${r.data.message.replace(/^skew_gcode: /, "")}. Corrected about (${c[0]}, ${c[1]}) with ${corFlags().replace(/--(\w\w)-angle /g, (m, p) => p.toUpperCase() + " ")}.`;
     await saveFile(r.data.zipName, new Blob([r.zip], { type: "application/zip" }));
   } catch (e) {
     $("#gNote").textContent = e.message;
@@ -780,6 +801,22 @@ function plateSvg(rot = 0, size = 150, label = "") {
   for (const dy of [-1.75, 1.75]) g += `<circle cx="${(edge * s).toFixed(1)}" cy="${(size - (edge + 6.25 + dy) * s).toFixed(1)}" r="${s}" fill="var(--mark)"/>`;
   return `<g transform="rotate(${rot} ${size / 2} ${size / 2})">${g}</g>${label}`;
 }
+let plateDrawingSvg = "";
+function cubeSvg() {
+  // top view of the pinwheel: walls as thick lines, floor plate inside
+  const s = 1.45, o = 30, S = 120.4 * s, t = 5, w = 118 * s;
+  const R = (x, y, ww, hh) => `<rect x="${o + x}" y="${o + y}" width="${ww}" height="${hh}" fill="var(--ink)"/>`;
+  return `<svg class="chart" viewBox="0 0 360 ${S + 70}" role="img" aria-label="Breakaway cube, top view: four walls around the floor plate">
+    ${R(0, S - t, w, t)}${R(S - t, S - w, t, w)}${R(S - w, 0, w, t)}${R(0, 0, t, w)}
+    <rect x="${o + (S - 114 * s) / 2}" y="${o + (S - 114 * s) / 2}" width="${114 * s}" height="${114 * s}" rx="3" fill="var(--surface-2)" stroke="var(--rule)"/>
+    <text x="${o + S / 2}" y="${o + S / 2 - 6}" text-anchor="middle" class="t-ink" style="font-size:12px">floor plate</text>
+    <text x="${o + S / 2}" y="${o + S / 2 + 10}" text-anchor="middle">X–Y</text>
+    <text x="${o + S / 2}" y="${o + S + 20}" text-anchor="middle" class="t-mark" style="font-size:11px">front wall · X–Z · 1 hole</text>
+    <text x="${o + S / 2}" y="${o - 8}" text-anchor="middle" class="t-mark" style="font-size:11px">back wall · X–Z</text>
+    <text x="${o + S + 12}" y="${o + S / 2}" class="t-mark" style="font-size:11px" transform="rotate(90 ${o + S + 12} ${o + S / 2})" text-anchor="middle">right · Y–Z · 2 holes</text>
+    <text x="${o - 12}" y="${o + S / 2}" class="t-mark" style="font-size:11px" transform="rotate(-90 ${o - 12} ${o + S / 2})" text-anchor="middle">left · Y–Z</text>
+    <text x="${o}" y="${o + S + 50}" style="font-size:11px">top view · corners joined by snap-off tabs</text></svg>`;
+}
 function drawGuides() {
   const S = 170;
   $("#plateDrawing").innerHTML = `<svg class="chart" viewBox="0 0 360 ${S + 40}" role="img" aria-label="Test plate, top view, origin at front left">
@@ -787,6 +824,7 @@ function drawGuides() {
     <text x="64" y="${S + 32}" class="t-mark" style="font-size:12px">origin: front left of bed</text>
     <line x1="70" y1="${S + 16}" x2="${70 + S}" y2="${S + 16}" stroke="var(--muted)"/><text x="${70 + S + 6}" y="${S + 20}">X →</text>
     <text x="250" y="${S - 4}" style="font-size:11px">red: marker holes</text></svg>`;
+  plateDrawingSvg = $("#plateDrawing").innerHTML;
   const s2 = 120;
   $("#turnDrawing").innerHTML = `<svg class="chart" viewBox="0 0 380 ${s2 + 46}" role="img" aria-label="Scan once, turn the plate 90 degrees, scan again">
     <defs><marker id="arrT" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker></defs>
@@ -802,17 +840,35 @@ function setPlateVersion(v) {
   plateVersion = v;
   $("#plateStd").setAttribute("aria-pressed", String(v === "standard"));
   $("#plateThin").setAttribute("aria-pressed", String(v === "thinrim"));
+  $("#plateCube").setAttribute("aria-pressed", String(v === "cube"));
+  $("#plateDrawing").innerHTML = v === "cube" ? cubeSvg() : plateDrawingSvg;
+  $("#plateSpecs").innerHTML = v === "cube"
+    ? `<div><div class="label">Size</div><div class="v">120 × 120 × 118 mm</div></div>
+       <div><div class="label">Parts</div><div class="v">4 walls + floor plate</div></div>
+       <div><div class="label">Filament</div><div class="v">about 125 g</div></div>
+       <div><div class="label">Fits</div><div class="v">MINI and larger</div></div>`
+    : `<div><div class="label">Size</div><div class="v">114 × 114 × 1.6 mm</div></div>
+       <div><div class="label">Holes</div><div class="v">9 × 9, Ø4 mm</div></div>
+       <div><div class="label">Pitch</div><div class="v">12.5 mm</div></div>
+       <div><div class="label">Fits</div><div class="v">beds ≥ 120 mm</div></div>`;
+  if (v === "cube") {
+    $("#plateNote").textContent = "Measures all three angles in one print: four 118 mm walls printed upright (front/back give X–Z, left/right give Y–Z) and the thin-rim plate as the floor (X–Y). The walls are joined at the corners by small tabs so they print without wobbling; snap them apart afterwards. Print it as exported, with the skew correction off. A few hours of printing.";
+    return;
+  }
   $("#plateNote").textContent = v === "thinrim"
     ? "Holes are 4 mm only in the bottom 0.6 mm, then widen to 5.6 mm at the top. The visible hole edge is a thin first-layer rim, so lighting and viewing angle barely move it. Best for phone photos, as good as the standard plate for scans. Photograph it first-layer side down; upside down is corrected automatically."
     : "The original plate, with straight 4 mm holes. Choose Standard when you measure it.";
   $("#optPlate").value = v;
+  syncPlane();
 }
+function syncPlane() { $("#optPlaneWrap").hidden = $("#optPlate").value !== "cubewall"; }
 // remember only the visitor's own choice (samples switch the plate temporarily)
 $("#plateStd").addEventListener("click", () => { setPlateVersion("standard"); store.set("plate", "standard"); });
 $("#plateThin").addEventListener("click", () => { setPlateVersion("thinrim"); store.set("plate", "thinrim"); });
-$("#optPlate").addEventListener("change", () => store.set("plate", $("#optPlate").value));
+$("#plateCube").addEventListener("click", () => setPlateVersion("cube"));
+$("#optPlate").addEventListener("change", () => { store.set("plate", $("#optPlate").value); syncPlane(); });
 $("#saveStl").addEventListener("click", () => {
-  const base = plateVersion === "thinrim" ? "skewcal_plate" : "skewcal_plate_standard";
+  const base = { thinrim: "skewcal_plate", standard: "skewcal_plate_standard", cube: "skewcal_cube" }[plateVersion];
   IN_ARTIFACT ? saveAsset(`assets/${base}.zip`, `${base}.zip`) : saveAsset(`assets/${base}.stl`, `${base}.stl`);
 });
 if (!IN_ARTIFACT) $("#stlNote").textContent = "114 × 114 × 1.6 mm, print as exported.";
@@ -929,9 +985,11 @@ document.addEventListener("fullscreenchange", () => setTimeout(drawScreenRef, 10
 // ------------------------------------------------------------------ start
 async function boot() {
   setMode(store.get("mode") === "photo" ? "photo" : "scan");
-  setPlateVersion(store.get("plate") === "standard" ? "standard" : "thinrim");
-  initTablet();
   drawGuides();
+  const savedPlate = store.get("plate");
+  setPlateVersion(savedPlate === "standard" ? "standard" : "thinrim");
+  if (savedPlate === "cubewall") { $("#optPlate").value = "cubewall"; syncPlane(); }
+  initTablet();
   renderFiles();
   loadSamples();
   try {

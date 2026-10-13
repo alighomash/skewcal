@@ -100,7 +100,7 @@ def copy_assets():
     out = os.path.join(WEB, "assets")
     os.makedirs(out, exist_ok=True)
     for name in ["skewcal_plate.stl", "skewcal_plate.json", "skewcal_plate_standard.stl",
-                 "skewcal_plate_standard.json", "skew_gcode.py",
+                 "skewcal_plate_standard.json", "skewcal_cube.stl", "skewcal_cube_wall.json", "skew_gcode.py",
                  "skewcal_reference_letter.pdf", "skewcal_reference_letter_dark.pdf",
                  "skewcal_reference_a4.pdf", "skewcal_reference_a4_dark.pdf"]:
         shutil.copy2(os.path.join(ROOT, name), out)
@@ -108,6 +108,7 @@ def copy_assets():
     import zipfile
     for zname, members in [("skewcal_plate.zip", ["skewcal_plate.stl", "skewcal_plate.json"]),
                            ("skewcal_plate_standard.zip", ["skewcal_plate_standard.stl", "skewcal_plate_standard.json"]),
+                           ("skewcal_cube.zip", ["skewcal_cube.stl", "skewcal_cube_wall.json", "skewcal_plate.json"]),
                            ("skew_gcode.zip", ["skew_gcode.py"])]:
         with zipfile.ZipFile(os.path.join(out, zname), "w", zipfile.ZIP_DEFLATED) as z:
             for m in members:

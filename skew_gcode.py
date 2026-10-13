@@ -9,11 +9,16 @@ Standard library only, so it can run as a PrusaSlicer post-processing script:
 PrusaSlicer appends the G-code path; the file is rewritten in place.
 
 --xy-angle is the measured angle between the printer's X and Y axes (the
-"XY angle" printed by skewcal.py). 90 means perfectly square.
+"XY angle" printed by skewcal.py). 90 means perfectly square. --xz-angle and
+--yz-angle are the angles between X and Z, and between Y and Z (from the
+skewcal cube's walls).
 
 Model: commanded (x, y) lands physically at  M @ (x, y)  with
     M = [[sx, sy*cos(t)], [0, sy*sin(t)]]
 so we send  M^-1 @ (x, y)  instead (about a pivot, default bed centre).
+A leaning Z axis moves the nozzle sideways by z * (ezx, ezy) as it rises (ez is
+the Z axis' unit direction), so that is subtracted first. Z values themselves
+are left unchanged: the lean shortens the true height by only ~1e-5.
 Arcs (G2/G3) are converted to short line segments because a sheared arc is
 no longer circular.
 """
@@ -32,10 +37,15 @@ def fmt(v):
 
 
 class Corrector:
-    def __init__(self, angle_deg, sx=1.0, sy=1.0, cx=90.0, cy=90.0, seg=0.5):
+    def __init__(self, angle_deg, sx=1.0, sy=1.0, cx=90.0, cy=90.0, seg=0.5, xz=90.0, yz=90.0):
         t = math.radians(angle_deg)
         self.cot = math.cos(t) / math.sin(t)
         self.isin = 1.0 / math.sin(t)
+        # Z axis direction from its angles to the X axis and to the (possibly skewed) Y axis
+        cxz, cyz = math.cos(math.radians(xz)), math.cos(math.radians(yz))
+        self.zx = cxz
+        self.zy = (cyz - math.cos(t) * cxz) / math.sin(t)
+        self.shear_z = abs(self.zx) > 1e-12 or abs(self.zy) > 1e-12
         self.sx, self.sy = sx, sy
         self.cx, self.cy = cx, cy
         self.seg = seg
@@ -52,9 +62,14 @@ class Corrector:
     def lin(self, dx, dy):
         return (dx - dy * self.cot) / self.sx, dy * self.isin / self.sy
 
-    def tf(self, x, y):
-        dx, dy = self.lin(x - self.cx, y - self.cy)
+    def tf(self, x, y, z=None):
+        z = self.z if z is None else z
+        dx, dy = self.lin(x - self.cx - self.zx * z, y - self.cy - self.zy * z)
         return self.cx + dx, self.cy + dy
+
+    def lin_z(self, dx, dy, dz):
+        """Correction of a relative move that also changes Z."""
+        return self.lin(dx - self.zx * dz, dy - self.zy * dz)
 
     def process_line(self, line):
         raw = line.rstrip("\r\n")
@@ -115,9 +130,22 @@ class Corrector:
 
     def move(self, cmd, params, tail, nl, line):
         has_xy = "X" in params or "Y" in params
+        dz = 0.0
+        if "Z" in params:
+            dz = params["Z"] - self.z if self.abs_xy else params["Z"]
         if not has_xy:
+            # with a leaning Z, a pure Z move must also nudge X/Y to stay on target
+            if self.shear_z and dz and (not self.abs_xy or self.x is not None and self.y is not None):
+                self.track_ze(params)
+                if self.abs_xy:
+                    params["X"], params["Y"] = self.tf(self.x, self.y)
+                else:
+                    params["X"], params["Y"] = self.lin_z(0.0, 0.0, dz)
+                return [self.emit(cmd, params, tail, nl)]
             self.track_ze(params)
             return [line]
+        if "Z" in params:
+            self.z += dz                   # X/Y are corrected for the height they end at
         if self.abs_xy:
             nx = params.get("X", self.x)
             ny = params.get("Y", self.y)
@@ -125,7 +153,8 @@ class Corrector:
                 self.warn_unknown += 1
                 if "X" in params: self.x = params["X"]
                 if "Y" in params: self.y = params["Y"]
-                self.track_ze(params)
+                if "E" in params:
+                    self.e = params["E"] if self.abs_e else self.e + params["E"]
                 return [line]
             self.x, self.y = nx, ny
             params["X"], params["Y"] = self.tf(nx, ny)
@@ -133,8 +162,9 @@ class Corrector:
             dx, dy = params.get("X", 0.0), params.get("Y", 0.0)
             if self.x is not None and self.y is not None:
                 self.x += dx; self.y += dy
-            params["X"], params["Y"] = self.lin(dx, dy)
-        self.track_ze(params)
+            params["X"], params["Y"] = self.lin_z(dx, dy, dz)
+        if "E" in params:
+            self.e = params["E"] if self.abs_e else self.e + params["E"]
         return [self.emit(cmd, params, tail, nl)]
 
     def arc(self, cmd, params, tail, nl):
@@ -176,10 +206,10 @@ class Corrector:
             zk = z0 + (z1 - z0) * f
             p = {}
             if self.abs_xy:
-                p["X"], p["Y"] = self.tf(xk, yk)
+                p["X"], p["Y"] = self.tf(xk, yk, zk)
                 if "Z" in params: p["Z"] = zk
             else:
-                p["X"], p["Y"] = self.lin(xk - px_prev, yk - py_prev)
+                p["X"], p["Y"] = self.lin_z(xk - px_prev, yk - py_prev, (z1 - z0) / n)
                 if "Z" in params: p["Z"] = (z1 - z0) / n
             if de_total is not None:
                 p["E"] = (e0 + de_total * f) if self.abs_e else de_total / n
@@ -196,29 +226,34 @@ class Corrector:
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("gcode")
-    ap.add_argument("--xy-angle", type=float, required=True,
+    ap.add_argument("--xy-angle", type=float, default=90.0,
                     help="measured angle between X and Y axes in degrees (90 = square)")
     ap.add_argument("--scale-x", type=float, default=1.0,
                     help="measured/nominal X scale to correct (default 1 = no change)")
     ap.add_argument("--scale-y", type=float, default=1.0)
+    ap.add_argument("--xz-angle", type=float, default=90.0,
+                    help="measured angle between X and Z in degrees (skewcal cube front/back walls)")
+    ap.add_argument("--yz-angle", type=float, default=90.0,
+                    help="measured angle between Y and Z in degrees (skewcal cube left/right walls)")
     ap.add_argument("--center", default="90,90", help="pivot point x,y in mm (default MINI bed centre 90,90)")
     ap.add_argument("--seg", type=float, default=0.5, help="max arc segment length (mm)")
     ap.add_argument("-o", "--output", help="write here instead of in place")
     a = ap.parse_args(argv)
 
-    if abs(a.xy_angle - 90) > 3:
-        raise SystemExit("skew_gcode: --xy-angle should be close to 90 degrees.")
+    for name in ("xy_angle", "xz_angle", "yz_angle"):
+        if abs(getattr(a, name) - 90) > 3:
+            raise SystemExit(f"skew_gcode: --{name.replace('_', '-')} should be close to 90 degrees.")
     with open(a.gcode, "rb") as f:
         head = f.read(4)
     if head == b"GCDE":
         raise SystemExit("skew_gcode: this is binary G-code. Disable 'Supports binary G-code' in "
                          "Printer Settings > General so post-processing gets plain text.")
     cx, cy = (float(v) for v in a.center.split(","))
-    c = Corrector(a.xy_angle, a.scale_x, a.scale_y, cx, cy, a.seg)
+    c = Corrector(a.xy_angle, a.scale_x, a.scale_y, cx, cy, a.seg, a.xz_angle, a.yz_angle)
     with open(a.gcode, "r", newline="") as f:
         lines = f.readlines()
-    out = [f"; skew_gcode: XY angle {a.xy_angle:.4f} deg, scale {a.scale_x:.5f}/{a.scale_y:.5f}, "
-           f"pivot {cx},{cy}\n"]
+    out = [f"; skew_gcode: XY angle {a.xy_angle:.4f} deg, XZ {a.xz_angle:.4f}, YZ {a.yz_angle:.4f}, "
+           f"scale {a.scale_x:.5f}/{a.scale_y:.5f}, pivot {cx},{cy}\n"]
     for ln in lines:
         out.extend(c.process_line(ln))
     dst = a.output or a.gcode

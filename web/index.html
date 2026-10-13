@@ -230,7 +230,7 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
       </svg>
       <div>
         <h1>Skewcal</h1>
-        <p>Measure your 3D printer's XY skew from a scan or a phone photo, then correct it.</p>
+        <p>Measure your 3D printer's skew (XY, and XZ / YZ with the cube) from a scan or a phone photo, then correct it.</p>
       </div>
     </div>
     <div class="engine" id="engine" data-state="idle" role="status" aria-live="polite"><i></i><span id="engineText">Analysis runs in your browser. Images are not uploaded.</span></div>
@@ -252,11 +252,12 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
           <div class="seg" role="group" aria-label="Plate version">
             <button type="button" id="plateThin" aria-pressed="true">Thin-rim</button>
             <button type="button" id="plateStd" aria-pressed="false">Standard</button>
+            <button type="button" id="plateCube" aria-pressed="false">Cube: XY, XZ, YZ</button>
           </div>
         </header>
         <div id="plateDrawing"></div>
         <p class="note" id="plateNote"></p>
-        <div class="spec">
+        <div class="spec" id="plateSpecs">
           <div><div class="label">Size</div><div class="v">114 × 114 × 1.6 mm</div></div>
           <div><div class="label">Holes</div><div class="v">9 × 9, Ø4 mm</div></div>
           <div><div class="label">Pitch</div><div class="v">12.5 mm</div></div>
@@ -317,6 +318,15 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
         <p class="note">With paper, absolute scale depends on the sheet printing at exactly 100%. Enter your measured spans for exact scale. A tablet screen needs no measuring.</p>
       </div>
       <div class="card stack" style="grid-column:1/-1">
+        <header><h2>Cube walls</h2><span class="badge-rec">X–Z and Y–Z</span></header>
+        <p>Snap the four walls off the cube at the corner tabs. Each wall is then measured exactly like the flat plate, with the scanner, the tablet or the paper sheet, lying flat.</p>
+        <ul class="rules">
+          <li><strong>Front and back walls</strong> (one small hole in the top border) measure <strong>X–Z</strong>. <strong>Left and right walls</strong> (two holes) measure <strong>Y–Z</strong>. The floor plate measures X–Y as usual.</li>
+          <li>Two images per wall, turned 90° between them. <strong>Turn it, don't flip it over</strong> within a pair: flipping and turning together doesn't cancel the scanner's own error.</li>
+          <li>Measure both walls of a pair together (four images), and choose Plate: Cube wall with the right plane. The two walls cross-check each other.</li>
+        </ul>
+      </div>
+      <div class="card stack" style="grid-column:1/-1">
         <header><h2>Tablet as the reference</h2><span class="badge-rec">Exact scale, perfectly flat</span></header>
         <p>Open this page on an iPad, lay it flat, and show the marker ring full screen. A screen's pixels are spaced exactly, so scale needs no ruler check, and glass is flatter than paper. The plate lies on the screen; its holes glow from the backlight.</p>
         <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
@@ -348,7 +358,10 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
         </label>
         <ul class="files" id="fileList"></ul>
         <div class="field"><label for="optPlate">Plate</label>
-          <select id="optPlate"><option value="thinrim">Thin-rim (default)</option><option value="standard">Standard (straight holes)</option></select>
+          <select id="optPlate"><option value="thinrim">Thin-rim (default), or the cube's floor</option><option value="standard">Standard (straight holes)</option><option value="cubewall">Cube wall</option></select>
+        </div>
+        <div class="field" id="optPlaneWrap" hidden><label for="optPlane">Which walls</label>
+          <select id="optPlane"><option value="xz">Front and back (one small hole): X–Z</option><option value="yz">Left and right (two small holes): Y–Z</option></select>
         </div>
         <div id="scanOpts" class="fields">
           <div class="field"><label for="optDpi">Scan dpi (if not in file)</label><input id="optDpi" type="number" min="100" max="4800" step="1" placeholder="auto"></div>
@@ -383,7 +396,9 @@ ul.rules { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column
     <p class="lede">Most printer firmware can't correct skew, so Skewcal corrects the G-code instead. It moves every XY coordinate by the inverse of the measured skew about the bed centre. Arcs are converted to short lines.</p>
     <div class="card stack" style="margin-bottom:20px">
       <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
-        <div class="field"><label for="corAngle">Measured XY angle, °</label><input id="corAngle" type="number" step="0.0001" min="87" max="93"></div>
+        <div class="field"><label for="corAngle">XY angle, °</label><input id="corAngle" type="number" step="0.0001" min="87" max="93"></div>
+        <div class="field"><label for="corXz">XZ angle, ° (cube)</label><input id="corXz" type="number" step="0.0001" min="87" max="93" placeholder="90"></div>
+        <div class="field"><label for="corYz">YZ angle, ° (cube)</label><input id="corYz" type="number" step="0.0001" min="87" max="93" placeholder="90"></div>
         <div class="field"><label for="corBed">Printer / bed centre</label>
           <select id="corBed">
             <option value="90,90">Prusa MINI / MINI+ (90, 90)</option>

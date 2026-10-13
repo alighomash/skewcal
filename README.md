@@ -166,6 +166,42 @@ In **Print Settings → Output options → Post-processing scripts**, add the li
 - The slicer's preview still shows the uncorrected paths; only the exported file changes.
 - Check the fix: print the plate again with the script enabled and measure it. The XY angle should now be within about ±0.02° of 90.
 
+## 6. Measure X–Z and Y–Z skew (breakaway cube)
+
+XY skew is how far X and Y are from square. A leaning Z axis gives **X–Z** and **Y–Z** skew instead: tall parts lean as they rise. On a MINI+ this is the single Z column not being exactly vertical.
+
+The breakaway cube measures all three angles in one print. It is `skewcal_cube.stl`, or `skewcal.py cube`. It is 120 × 120 × 118 mm, about 125 g of PLA, and a few hours of printing.
+
+- **Four upright walls** carry the same 9 × 9 hole grid. Front and back walls measure X–Z; left and right walls measure Y–Z. The walls are joined at the corners by small tabs, so they print without wobbling.
+- **The floor** is the normal thin-rim plate, lying loose inside the walls. It measures X–Y as usual.
+- **Small holes in each wall's top border** tell them apart: one hole on the front and back walls, two on the left and right walls.
+
+1. **Print it as exported** (don't rotate it), with the skew correction **off**.
+2. **Snap the walls apart** at the corner tabs. The small nubs left on the edges don't matter.
+3. **Scan or photograph each wall** lying flat, exactly like the plate: scanner, tablet or paper sheet. Take two images per wall, turned 90° between them.
+   - **Turn it, don't flip it over,** within a pair. Flipping and turning together doesn't cancel the scanner's own error, and the report will warn that there's no reversal.
+4. **Measure each pair of walls together**, with the wall plate file and the plane:
+
+```bash
+.venv/bin/python skewcal.py scan front1.png front2.png back1.png back2.png --plate skewcal_cube_wall.json --plane xz
+.venv/bin/python skewcal.py scan left1.png left2.png right1.png right2.png --plate skewcal_cube_wall.json --plane yz
+.venv/bin/python skewcal.py scan floor1.png floor2.png                       # the floor plate: X-Y
+```
+
+   In the web app, choose **Plate: Cube wall** and the walls (front/back or left/right).
+
+The report then says "XZ angle" or "YZ angle". Its second scale is the **Z scale**, which reflects Z steps/mm and layer height accuracy. Because two walls measure each angle, the scatter between their images is an honest check: they should agree within about 0.01°.
+
+5. **Correct all three in one post-processing line:**
+
+```
+/usr/bin/python3 "/path/to/skew_gcode.py" --xy-angle 89.7671 --xz-angle 89.8200 --yz-angle 90.1200;
+```
+
+The script shifts every X/Y coordinate by the measured lean times its height, so the first layer stays where it is. Moves that change only Z get the matching small X/Y shift. Z values themselves are not changed.
+
+The holes in the walls are printed sideways, so their tops are bridged and sag slightly. Every hole sags the same way, which only shifts the grid, and the fit ignores a shift. The tests include a 0.25 mm sag.
+
 ## Why two images (reversal)
 
 Neither a scanner nor a sheet from a paper printer is perfectly square. Turning the plate 90° flips the sign of that reference error but not the plate's own skew. Combining the two shots separates them; the report prints the reference bias it removed. A single image works, but you get a warning that the result includes the reference error.
@@ -204,9 +240,10 @@ The LiDAR isn't useful here. Its depth map is about 256 × 192 points with milli
 | `skewcal/plate.py` | plate geometry and STL writer |
 | `skewcal/sheet.py` | ArUco reference layouts: the paper sheet (PDF) and the tablet screen |
 | `skewcal/analyze.py` | hole detection, grid fit, rectification, reversal maths |
-| `skew_gcode.py` | PrusaSlicer post-processor (standard library only) |
+| `skew_gcode.py` | PrusaSlicer post-processor for XY, XZ and YZ skew (standard library only) |
 | `skewcal_plate.stl` / `.json` | default (thin-rim) test plate and its parameters |
 | `skewcal_plate_standard.stl` / `.json` | original plate with straight holes (`--plate skewcal_plate_standard.json`) |
+| `skewcal_cube.stl`, `skewcal_cube_wall.json` | breakaway cube for X–Z / Y–Z (+ XY floor) and its wall plate parameters |
 | `skewcal_reference_*.pdf` | phone reference sheets (Letter / A4, white or dark window) |
 | `tests/` | synthetic-image and G-code tests |
 | `web/`, `tools/build_web.py` | browser app (Python in Pyodide); `python3 tools/serve_web.py` runs it locally |

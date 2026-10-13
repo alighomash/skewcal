@@ -154,6 +154,36 @@ for pth, rot, cam, sd in [(p11, 0.5, (10, -35, 300), 30), (p12, 90.5, (-10, -30,
 res, _ = run(["photo", p11, p12, "--out", OUT, "--no-annotate", "--focal-px", "3000"])
 check("phone, thin-rim plate upside down on tablet", res, th3, sx3, sy3, 0.02, 8e-4)
 
+# ---- 11. cube walls: X-Z from front + back walls (scanner), Y-Z from a wall on the tablet -----
+wall_xz, wall_yz = PlateSpec.cube_wall(1), PlateSpec.cube_wall(2)
+js_wall = os.path.join(OUT, "cube_wall.json"); PlateSpec.cube_wall().to_json(js_wall)
+thxz, sxx, szz = 89.82, 1.0015, 0.9970          # X-Z angle, X scale, Z scale
+Mxz = synth.printer_matrix(thxz, sxx, szz)
+walls = []
+# front wall face up at 0/90 deg, back wall face down at 0/90 deg (turned, never flipped within a pair)
+for k, (rot, mir, sd) in enumerate([(2.0, False, 40), (92.0, False, 41), (-1.0, True, 42), (88.5, True, 43)]):
+    pw = os.path.join(OUT, f"wall_xz_{k}.png")
+    synth.render_scan(pw, wall_xz, Mxz, dpi=600, rot=rot, mirror=mir, frame_e=0.05, droop=0.25, seed=sd)
+    walls.append(pw)
+res, txt = run(["scan", *walls, "--plate", js_wall, "--plane", "xz", "--out", OUT, "--no-annotate"])
+check("cube walls X-Z, front + back, drooping holes", res, thxz, sxx, szz, 0.01, 6e-4)
+if "XZ angle:" not in txt or "--xz-angle" not in txt or "lean toward +X as they rise" not in txt:
+    print("FAIL  X-Z report wording"); failures.append("xz report")
+thyz, syy, szz2 = 90.12, 0.9990, 1.0020
+Myz = synth.printer_matrix(thyz, syy, szz2)
+pw1 = os.path.join(OUT, "wall_yz_1.jpg"); pw2 = os.path.join(OUT, "wall_yz_2.jpg")
+for pth, rot, cam, sd in [(pw1, 0.5, (10, -35, 310), 44), (pw2, 90.5, (-10, -30, 300), 45)]:
+    synth.render_photo(pth, wall_yz, Myz, cam=cam, plate_rot=rot, k1=-0.02, layout="screen",
+                       h=wall_yz.feature_height() + sheet.SCREEN_GLASS_MM, droop=0.25, seed=sd)
+res, txt = run(["photo", pw1, pw2, "--plate", js_wall, "--plane", "yz", "--out", OUT, "--no-annotate",
+                "--focal-px", "3000"])
+check("cube wall Y-Z on the tablet, drooping holes", res, thyz, syy, szz2, 0.02, 8e-4)
+try:
+    run(["scan", walls[0], "--plate", js_wall, "--out", OUT, "--no-annotate"])
+    print("FAIL  a wall analysed without --plane should be refused"); failures.append("plane guard")
+except SystemExit:
+    print("PASS  a cube wall without --plane is refused")
+
 # ---- 10. plate .json files from before thin-rim plates still mean straight holes ----------
 import json  # noqa: E402
 old_js = os.path.join(OUT, "plate_old.json")

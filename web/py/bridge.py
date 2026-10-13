@@ -14,7 +14,7 @@ import numpy as np
 from skewcal import analyze as an
 from skewcal.plate import PlateSpec
 
-PLATES = {"thinrim": PlateSpec(), "standard": PlateSpec.standard()}
+PLATES = {"thinrim": PlateSpec(), "standard": PlateSpec.standard(), "cubewall": PlateSpec.cube_wall()}
 SPEC = PLATES["thinrim"]
 _results = []          # [(name, result dict | None, error | None)]
 
@@ -73,7 +73,9 @@ def analyze_one(mode, path, name, opts_json, overlay_dir="/tmp/out"):
 
 
 def combine_all(mode, opts_json="{}"):
+    """opts: plane ("xy", or "xz" / "yz" for cube walls)."""
     import skewcal_cli
+    plane = json.loads(opts_json or "{}").get("plane") or "xy"
     ok = [(n, r) for n, r, e in _results if r is not None]
     images = []
     for n, r, e in _results:
@@ -85,13 +87,13 @@ def combine_all(mode, opts_json="{}"):
             d["overlay_path"] = "/tmp/out/" + os.path.splitext(os.path.basename(n))[0] + "_skewcal.jpg"
         images.append(d)
     if not ok:
-        return json.dumps(dict(ok=False, images=images, mode=mode))
+        return json.dumps(dict(ok=False, images=images, mode=mode, plane=plane))
     names, results = [n for n, _ in ok], [r for _, r in ok]
     combined = an.combine(results)
     report = skewcal_cli.format_report(results, names, combined, SPEC, mode,
-                                       script_path="/path/to/skew_gcode.py")
-    full = dict(combined=combined, images=dict(zip(names, results)), plate=SPEC.__dict__)
-    return json.dumps(_clean(dict(ok=True, mode=mode, combined=combined, images=images,
+                                       script_path="/path/to/skew_gcode.py", plane=plane)
+    full = dict(plane=plane, combined=combined, images=dict(zip(names, results)), plate=SPEC.__dict__)
+    return json.dumps(_clean(dict(ok=True, mode=mode, plane=plane, combined=combined, images=images,
                                   report=report, report_json=json.dumps(_clean(full), indent=2),
                                   plate=SPEC.__dict__)))
 
@@ -103,14 +105,14 @@ def write_gray_png(path, raw_path, width, height):
     cv2.imwrite(path, g, [cv2.IMWRITE_PNG_COMPRESSION, 1])
 
 
-def correct_gcode(src, dst, angle, scale_x=1.0, scale_y=1.0, cx=90.0, cy=90.0):
+def correct_gcode(src, dst, angle, scale_x=1.0, scale_y=1.0, cx=90.0, cy=90.0, xz=90.0, yz=90.0):
     """Run skew_gcode on a file in the virtual filesystem. Returns JSON stats or error."""
     import io
     import contextlib
     import skew_gcode
     err = io.StringIO()
     argv = [src, "--xy-angle", str(angle), "--scale-x", str(scale_x), "--scale-y", str(scale_y),
-            "--center", f"{cx},{cy}", "-o", dst]
+            "--xz-angle", str(xz), "--yz-angle", str(yz), "--center", f"{cx},{cy}", "-o", dst]
     try:
         with contextlib.redirect_stderr(err):
             skew_gcode.main(argv)

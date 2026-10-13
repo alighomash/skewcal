@@ -20,9 +20,11 @@ def printer_matrix(theta_deg, sx, sy):
     return np.array([[sx, sy * math.cos(t)], [0, sy * math.sin(t)]])
 
 
-def plate_polys(spec, M, segs=96, marker_scale=1.0):
+def plate_polys(spec, M, segs=96, marker_scale=1.0, droop=0.0):
     """Physical plate outline and hole polygons (mm), plate centred at origin.
-    marker_scale < 1 simulates marker holes that printed partly closed."""
+    marker_scale < 1 simulates marker holes that printed partly closed.
+    droop (mm) sags the top of every hole, as on a wall printed upright, where
+    the holes run sideways and their tops are bridged."""
     centre = np.array([spec.span / 2, spec.span / 2])
     outline = (spec.outline() - centre) @ M.T
     holes = []
@@ -30,7 +32,7 @@ def plate_polys(spec, M, segs=96, marker_scale=1.0):
         if d < spec.hole_d:
             d *= marker_scale
         a = np.arange(segs) * 2 * math.pi / segs
-        c = np.c_[cx + d / 2 * np.cos(a), cy + d / 2 * np.sin(a)] - centre
+        c = np.c_[cx + d / 2 * np.cos(a), cy + d / 2 * np.sin(a) - droop * np.clip(np.sin(a), 0, None) ** 2] - centre
         holes.append(c @ M.T)
     return outline, holes
 
@@ -55,13 +57,13 @@ def _down(img):
 
 
 def render_scan(path, spec, M, dpi=600, rot=0.0, mirror=False, frame_e=0.0, kx=1.0, ky=1.0,
-                dark_plate=True, noise=0.01, blur=0.8, seed=0):
+                dark_plate=True, noise=0.01, blur=0.8, seed=0, droop=0.0):
     s = dpi / 25.4
     size = 1.5 * spec.size
     W = H = int(size * s)
     bg, fg = (230, 35) if dark_plate else (25, 215)
     img = np.full((H * SS, W * SS), bg, np.uint8)
-    outline, holes = plate_polys(spec, M)
+    outline, holes = plate_polys(spec, M, droop=droop)
     Rm = rot2(rot)
     Mi = np.diag([-1.0, 1.0]) if mirror else np.eye(2)
     F = np.array([[1, -math.sin(math.radians(frame_e))], [0, math.cos(math.radians(frame_e))]])
@@ -93,7 +95,7 @@ def render_photo(path, spec, M, f=3000.0, size=(3000, 2250), cam=(15, -40, 330),
                  plate_rot=0.0, plate_off=(0, 0), h=None, k1=0.0, paper=np.eye(2),
                  dark_plate=True, dark_window=False, noise=0.012, blur=1.0, seed=0, jpeg=92,
                  marker_scale=1.0, warp=0.0, glare=0.0, glare_period=220.0, glare_angle=40.0,
-                 layout="paper", flip=False):
+                 layout="paper", flip=False, droop=0.0):
     """warp: height (mm) of the plate corners above its centre (a cupped plate).
     glare: peak brightness added to the plate surface in diagonal bands, like a lamp
     reflecting off the shiny top-layer lines (holes and paper are not affected).
@@ -137,7 +139,7 @@ def render_photo(path, spec, M, f=3000.0, size=(3000, 2250), cam=(15, -40, 330),
                     q = np.array([[x0, y0], [x0 + cell, y0], [x0 + cell, y0 - cell], [x0, y0 - cell]])
                     # slightly overlap cells to avoid AA seams
                     _fill(U, proj(q @ paper.T), ink_v)
-    outline, holes = plate_polys(spec, M, marker_scale=marker_scale)
+    outline, holes = plate_polys(spec, M, marker_scale=marker_scale, droop=droop)
     if flip:
         F = np.diag([-1.0, 1.0])
         outline, holes = outline @ F, [hp @ F for hp in holes]

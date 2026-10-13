@@ -46,6 +46,12 @@ The pipeline, mostly in `skewcal/analyze.py`:
 
 - `PlateSpec` (in `plate.py`) is the single source of plate geometry. `skewcal_plate.json` must match the printed STL, and the analysis loads a custom one via `--plate`. The STL must be printed unrotated, with the origin hole at front-left.
 - Sheet constants (`WINDOW_HALF`, `SPAN_X_NOMINAL`=174, `SPAN_Y_NOMINAL`=234, `ARUCO_DICT`) live in `sheet.py`. Changing them invalidates the PDFs already printed.
+- **Breakaway cube** (`plate.build_cube`, `skewcal.py cube`):
+  - It has four `PlateSpec.cube_wall()` walls (118 mm, straight holes, markers 2.4 mm, `wall=True`) in a pinwheel with 0.8 mm corner gaps bridged by overlapping tab boxes, plus the default plate as the floor.
+  - Wall local x maps to +X (front/back) or +Y (left/right), and local y to +Z. `id_holes` (1 or 2) only label the walls.
+  - The analysis is unchanged. `--plane xz|yz` relabels the report and the correction flag, and is required for walls.
+  - `skew_gcode.py --xz-angle/--yz-angle` subtracts z·(ezx, ezy) from X/Y before the XY inverse, and adds X/Y to Z-only moves when a shear is active.
+  - Within a reversal pair, a wall must be turned, not flipped and turned. That combination doesn't flip the frame-error sign.
 - There are two photo references, the paper sheet (marker ids 0–58) and the tablet screen (ids 59–98, `SCREEN_*` in `sheet.py`). `rectify_phone` picks one from the detected ids. The screen layout is drawn by `web/app.js` from `web/screen_markers.json`, which `build_web.py` exports. Change both together.
 - **Thin-rim plate.** `PlateSpec()` is the default thin-rim plate (rim 0.6, top_d 5.6); `PlateSpec.standard()` has straight holes.
   - `from_json` treats files without a `rim` field as standard, which keeps old plate files valid.
