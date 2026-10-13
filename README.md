@@ -59,7 +59,7 @@ The G-code post-processor (`skew_gcode.py`) uses only the Python standard librar
 
    For a ruler, stand it on edge and start at the 10 mm mark. If your calipers are too short, or you want to cancel toner spread, measure like edges instead (left edge to left edge, nominal 160 mm; top edge to top edge, nominal 220 mm) and scale: `span_x = L × 174/160`, `span_y = L × 234/220`.
 3. Tape the sheet to a flat, hard table, not a book or a mat. Lay the plate in the window.
-4. Photograph from about 30–40 cm, using the **2× or 3× lens** if you have one. The whole sheet should be in frame, with soft even light, no flash, and no shadow of the phone. A slight tilt is fine. Close up with the 1× lens, every bit of plate or paper height shows up as a position error.
+4. Photograph from about 40–50 cm, using the **2× or 3× lens** if you have one. Avoid the 1× lens up close: its leftover lens distortion makes a flat plate look bowled by several millimetres, which throws off the scale. Keep lamps out of the plate's reflection; bright glare bands on the plate are handled, but they add noise. The whole sheet should be in frame, with soft even light, no flash, and no shadow of the phone. A slight tilt is fine. Close up with the 1× lens, every bit of plate or paper height shows up as a position error.
 5. **Turn the plate 90° on the sheet** and take another photo. Turning the phone, or the sheet and plate together, does not count: the plate has to change orientation *relative to the sheet's markers*. Two to four photos are best.
 6. Use the **original files**. AirDrop them or copy them from Photos into the folder. Images pasted into a chat are shrunk to about 2000 px and lose the EXIF focal length, which costs accuracy.
 7. Run:

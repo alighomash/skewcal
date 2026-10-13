@@ -92,8 +92,10 @@ def look_at(C, T):
 def render_photo(path, spec, M, f=3000.0, size=(3000, 2250), cam=(15, -40, 330), target=(0, 0, 0),
                  plate_rot=0.0, plate_off=(0, 0), h=0.8, k1=0.0, paper=np.eye(2),
                  dark_plate=True, dark_window=False, noise=0.012, blur=1.0, seed=0, jpeg=92,
-                 marker_scale=1.0, warp=0.0):
-    """warp: height (mm) of the plate corners above its centre (a cupped plate)."""
+                 marker_scale=1.0, warp=0.0, glare=0.0, glare_period=220.0, glare_angle=40.0):
+    """warp: height (mm) of the plate corners above its centre (a cupped plate).
+    glare: peak brightness added to the plate surface in diagonal bands, like a lamp
+    reflecting off the shiny top-layer lines (holes and paper are not affected)."""
     Wd, Hd = size
     c = np.array([(Wd - 1) / 2, (Hd - 1) / 2])
     K = np.array([[f, 0, c[0]], [0, f, c[1]], [0, 0, 1]])
@@ -139,8 +141,19 @@ def render_photo(path, spec, M, f=3000.0, size=(3000, 2250), cam=(15, -40, 330),
     for hp in holes:
         _fill(U, proj_plate(hp), behind)
     g = _down(U).astype(np.float32) / 255
-    # vignetting
     yy, xx = np.mgrid[0:Hd, 0:Wd].astype(np.float32)
+    if glare:
+        P = np.zeros((Hd * SS, Wd * SS), np.uint8)
+        _fill(P, proj_plate(outline), 255)
+        for hp in holes:
+            _fill(P, proj_plate(hp), 0)
+        on_plate = _down(P).astype(np.float32) / 255
+        a = math.radians(glare_angle)
+        u = (xx * math.cos(a) + yy * math.sin(a)) / glare_period
+        band = np.clip(np.cos(2 * math.pi * u), 0, 1) ** 3
+        env = np.exp(-(((xx - c[0]) / (0.45 * Wd)) ** 2 + ((yy - c[1]) / (0.45 * Hd)) ** 2))
+        g += glare * band * env * on_plate
+    # vignetting
     rr = ((xx - c[0]) ** 2 + (yy - c[1]) ** 2) / (0.5 * math.hypot(Wd, Hd)) ** 2
     g *= (1 - 0.25 * rr)
     # lens distortion: distorted pixel p_d shows undistorted point p_u

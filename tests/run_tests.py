@@ -109,6 +109,16 @@ res, _ = run(["photo", p5, p6, "--out", OUT, "--no-annotate", "--focal-px", "300
 print(f"      same without warp model: theta err {1000*(res['theta']-th3):+.1f} mdeg,"
       f" scale err X {1e4*(res['scale_x']-sx3):+.1f} Y {1e4*(res['scale_y']-sy3):+.1f} (x1e-4)")
 
+# ---- 6. phone, glare bands across a shiny plate (real-photo problem, 2026-10-13) -----------
+p7 = os.path.join(OUT, "photo_7.jpg"); p8 = os.path.join(OUT, "photo_8.jpg")
+synth.render_photo(p7, spec, M3, cam=(10, -30, 300), plate_rot=0.5, k1=-0.02, paper=paper,
+                   glare=0.6, glare_angle=40, seed=11)
+synth.render_photo(p8, spec, M3, cam=(-15, -35, 310), plate_rot=90.5, k1=-0.02, paper=paper,
+                   glare=0.6, glare_angle=-35, seed=12)
+res, _ = run(["photo", p7, p8, "--out", OUT, "--focal-px", "3000",
+              "--span-x", f"{174*1.003:.2f}", "--span-y", f"{234*0.998:.2f}"])
+check("phone, glare bands on the plate", res, th3, sx3, sy3, 0.02, 1.5e-3)
+
 print()
 print("ALL PASSED" if not failures else f"FAILED: {failures}")
 sys.exit(1 if failures else 0)

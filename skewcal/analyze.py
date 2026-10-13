@@ -53,19 +53,145 @@ def load_gray(path):
 # Hole detection in a metric (fronto-parallel, known px/mm) image
 # ---------------------------------------------------------------------------
 
-def _component_holes(comp):
-    """Given a binary component mask (uint8 0/1), return label image of the
-    enclosed background regions (holes) and their stats."""
-    inv = (comp == 0).astype(np.uint8)
-    n, lab, stats, cent = cv2.connectedComponentsWithStats(inv, connectivity=4)
-    H, W = comp.shape
-    holes = []
+def _ellipse(k):
+    k = max(3, int(k) | 1)
+    return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+
+
+def _plate_region(mask, s, spec: PlateSpec):
+    """Plate blob from a binary 'plate-coloured' mask. Works at ~2 px/mm: closing
+    bridges gaps such as glare bands across a shiny plate, and the outer contour
+    is filled so the holes are part of the region. Returns a full-res bool mask."""
+    f = min(1.0, 2.0 / s)
+    m = cv2.resize(mask.astype(np.float32), None, fx=f, fy=f, interpolation=cv2.INTER_AREA) > 0.5
+    m = cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_CLOSE, _ellipse(1.6 * spec.pitch * s * f))
+    cs, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    area = (spec.size * s * f) ** 2
+    cs = [c for c in cs if 0.35 * area < cv2.contourArea(c) < 1.6 * area]
+    if not cs:
+        return None
+    region = np.zeros_like(m)
+    cv2.drawContours(region, [max(cs, key=cv2.contourArea)], -1, 1, cv2.FILLED)
+    return cv2.resize(region, (mask.shape[1], mask.shape[0]), interpolation=cv2.INTER_NEAREST).astype(bool)
+
+
+def _local_contrast(d, region, s, spec: PlateSpec):
+    """Hole-likeness map in 0..1: (d - local plate level) / (hole level - local plate level).
+    d has holes bright. The local plate level comes from a grey opening at ~2 px/mm,
+    which removes hole-sized bright spots but follows broad glare and shading."""
+    f = min(1.0, 2.0 / s)
+    dc = cv2.resize(d, None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
+    bgc = cv2.morphologyEx(dc, cv2.MORPH_OPEN, _ellipse(1.7 * spec.hole_d * s * f))
+    bgc = cv2.GaussianBlur(bgc, (0, 0), 1.0)
+    bg = cv2.resize(bgc, (d.shape[1], d.shape[0]), interpolation=cv2.INTER_LINEAR)
+    white = float(np.percentile(d[region], 99.5)) if region.any() else float(d.max())
+    norm = (d - bg) / np.maximum(white - bg, 0.05)
+    return np.clip(norm, 0, 1).astype(np.float32), bg
+
+
+def _blobs(norm, region, s, spec: PlateSpec):
+    """Hole-sized round blobs of the contrast map inside the plate region."""
+    A_big = math.pi * (spec.hole_d / 2 * s) ** 2
+    cand = ((norm > 0.5) & region).astype(np.uint8)
+    n, lab, stats, cent = cv2.connectedComponentsWithStats(cand, connectivity=8)
+    big, small = [], []
     for k in range(1, n):
         x, y, w, h, a = stats[k]
-        if x == 0 or y == 0 or x + w >= W or y + h >= H:
-            continue                          # touches border -> outside region
-        holes.append((k, x, y, w, h, a, cent[k]))
-    return lab, holes
+        if min(w, h) < 3:
+            continue
+        if max(w, h) / min(w, h) > 1.5 or not (0.55 < a / float(w * h) < 0.97):
+            continue
+        q = a / A_big
+        if 0.45 < q < 1.8:
+            big.append(cent[k])
+        elif 0.05 < q <= 0.45:
+            small.append(cent[k])
+    return np.array(big).reshape(-1, 2), np.array(small).reshape(-1, 2)
+
+
+def _lattice_px(pts, pitch_px, n):
+    """Predict every grid position (pixels) from a partial set of hole centres:
+    square lattice of the given pitch, n x n, containing the found holes."""
+    d = pts[None, :, :] - pts[:, None, :]
+    r = np.linalg.norm(d, axis=2)
+    vec = d[(r > 0.75 * pitch_px) & (r < 1.25 * pitch_px)]
+    if len(vec) < 6:
+        return np.empty((0, 2))
+    a = np.arctan2(vec[:, 1], vec[:, 0])
+    phi = math.atan2(np.sin(4 * a).mean(), np.cos(4 * a).mean()) / 4
+    B = pitch_px * np.array([[math.cos(phi), -math.sin(phi)], [math.sin(phi), math.cos(phi)]])
+    q0 = pts[np.argmin(np.linalg.norm(pts - np.median(pts, axis=0), axis=1))]
+    ij = np.linalg.solve(B, (pts - q0).T).T
+    ok = np.max(np.abs(ij - np.round(ij)), axis=1) < 0.3
+    ij = np.round(ij[ok]).astype(int)
+    if len(ij) < 6:
+        return np.empty((0, 2))
+    L, *_ = np.linalg.lstsq(np.c_[ij, np.ones(len(ij))], pts[ok], rcond=None)
+    lo, hi = ij.max(0) - (n - 1), ij.min(0) + (n - 1)
+    gi, gj = np.meshgrid(np.arange(lo[0], hi[0] + 1), np.arange(lo[1], hi[1] + 1), indexing="ij")
+    grid = np.c_[gi.ravel(), gj.ravel()]
+    return np.c_[grid, np.ones(len(grid))] @ L
+
+
+def _edge_circle(d, cx, cy, r, n_rays=96):
+    """Sub-pixel hole centre from its edge. Along each ray the edge is where the
+    profile crosses halfway between the hole interior and *that ray's* outside
+    level, so uneven surroundings (glare, shading) don't pull the centre.
+    Returns (cx, cy, radius_px) or None if this doesn't look like a hole."""
+    H, W = d.shape
+    ang = np.arange(n_rays) * (2 * math.pi / n_rays)
+    ca, sa = np.cos(ang)[:, None], np.sin(ang)[:, None]
+    dt = 0.25
+    t = np.arange(0.15 * r, 1.9 * r, dt, dtype=np.float32)
+    inner_m, outer_m = t < 0.45 * r, (t > 1.35 * r) & (t < 1.85 * r)
+    for _ in range(3):
+        if not (2 * r < cx < W - 2 * r and 2 * r < cy < H - 2 * r):
+            return None
+        X = (cx + ca * t).astype(np.float32)
+        Y = (cy + sa * t).astype(np.float32)
+        prof = cv2.remap(d, X, Y, cv2.INTER_LINEAR)
+        inner = float(np.median(prof[:, inner_m]))
+        outer = np.median(prof[:, outer_m], axis=1)
+        con = inner - outer
+        cmed = float(np.median(con))
+        if cmed < 0.08:
+            return None
+        valid = con > max(0.05, 0.3 * cmed)
+        thr = (inner + outer) / 2
+        start = int(np.argmax(t >= 0.45 * r))
+        below = prof[:, start:] < thr[:, None]
+        k = np.argmax(below, axis=1) + start
+        valid &= below.any(axis=1)
+        idx = np.nonzero(valid)[0]
+        if len(idx) < 0.35 * n_rays:
+            return None
+        p0, p1 = prof[idx, k[idx] - 1], prof[idx, k[idx]]
+        te = t[k[idx] - 1] + (p0 - thr[idx]) / np.maximum(p0 - p1, 1e-6) * dt
+        inside = (te > 0.5 * r) & (te < 1.4 * r)
+        idx, te = idx[inside], te[inside]
+        # need the edge on most sides, or the fit is lopsided
+        if len(idx) < 0.35 * n_rays or len(np.unique((ang[idx] // (math.pi / 2)).astype(int))) < 4:
+            return None
+        ex, ey = cx + np.cos(ang[idx]) * te, cy + np.sin(ang[idx]) * te
+        keep = np.ones(len(ex), bool)
+        for _ in range(3):
+            A = np.c_[ex[keep], ey[keep], np.ones(keep.sum())]
+            sol, *_ = np.linalg.lstsq(A, -(ex[keep] ** 2 + ey[keep] ** 2), rcond=None)
+            ox, oy = -sol[0] / 2, -sol[1] / 2
+            rad = math.sqrt(max(ox * ox + oy * oy - sol[2], 1e-9))
+            res = np.abs(np.hypot(ex - ox, ey - oy) - rad)
+            mad = 1.4826 * np.median(res[keep])
+            new = res < max(3 * mad, 0.3)
+            if new.sum() < 0.3 * n_rays or np.array_equal(new, keep):
+                break
+            keep = new
+        if not (0.5 * r < rad < 1.4 * r):
+            return None
+        moved = math.hypot(ox - cx, oy - cy)
+        cx, cy = ox, oy
+        if moved < 0.01:
+            break
+    return cx, cy, rad
 
 
 def detect_holes(g, s, spec: PlateSpec, debug=None):
@@ -74,96 +200,62 @@ def detect_holes(g, s, spec: PlateSpec, debug=None):
     g: float32 image (0..1) where 1 px = 1/s mm, fronto-parallel.
     Returns dict with 'big' (N,2) and 'small' (M,2) sub-pixel centres in pixel
     coordinates (col,row), hole diameters (mm) and image statistics.
+
+    The plate is located with a global threshold (gaps such as glare bands are
+    bridged), hole candidates come from a local-contrast map, missing grid
+    positions are predicted from the lattice, and every grid hole is measured
+    by an edge circle fit that adapts to its own surroundings.
     """
     sig = max(0.6, 0.06 * s)
     gb = cv2.GaussianBlur(g, (0, 0), sig)
     g8 = np.clip(gb * 255, 0, 255).astype(np.uint8)
     _, bright = cv2.threshold(g8, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    plate_area = (spec.size * s) ** 2
-    A_big = math.pi * (spec.hole_d / 2 * s) ** 2
     best = None
     for dark_plate in (True, False):
-        mask = (bright == 0) if dark_plate else (bright == 1)
-        mask = mask.astype(np.uint8)
-        n, lab, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-        order = np.argsort(-stats[1:, cv2.CC_STAT_AREA]) + 1
-        for k in order[:4]:
-            x, y, w, h, a = stats[k]
-            if not (0.35 * plate_area < a < 1.6 * plate_area):
-                continue
-            pad = 3
-            comp = np.zeros((h + 2 * pad, w + 2 * pad), np.uint8)
-            comp[pad:pad + h, pad:pad + w] = (lab[y:y + h, x:x + w] == k)
-            hlab, holes = _component_holes(comp)
-            big, small = [], []
-            for (hk, hx, hy, hw, hh, ha, hc) in holes:
-                if min(hw, hh) < 3:
-                    continue
-                aspect = max(hw, hh) / min(hw, hh)
-                fill = ha / float(hw * hh)
-                if aspect > 1.5 or not (0.55 < fill < 0.97):
-                    continue
-                q = ha / A_big
-                entry = (hc[0] + x - pad, hc[1] + y - pad, ha)
-                if 0.45 < q < 1.8:
-                    big.append(entry)
-                elif 0.05 < q <= 0.45:
-                    small.append(entry)
-            score = len(big)
-            if best is None or score > best["score"]:
-                plate_px = comp[pad:pad + h, pad:pad + w].astype(bool)
-                best = dict(score=score, big=big, small=small, dark_plate=dark_plate,
-                            bbox=(x, y, w, h), plate_px=plate_px)
-    if best is None or best["score"] < 6:
+        region = _plate_region(bright == (0 if dark_plate else 1), s, spec)
+        if region is None:
+            continue
+        d = gb if dark_plate else 1.0 - gb
+        norm, bg = _local_contrast(d, region, s, spec)
+        big, small = _blobs(norm, region, s, spec)
+        if best is None or len(big) > len(best["big"]):
+            best = dict(big=big, small=small, dark_plate=dark_plate, region=region, d=d, norm=norm)
+    if best is None or len(best["big"]) < 6:
         raise RuntimeError("Could not find the test plate in the image (need clear contrast "
                            "between the plate and what is behind its holes).")
 
-    x, y, w, h = best["bbox"]
-    sub = gb[y:y + h, x:x + w]
-    lvl_plate = float(np.median(sub[best["plate_px"]]))
-
-    # Hole (background) level: median inside the big holes
-    vals = []
-    for cx, cy, _ in best["big"]:
-        r = 0.3 * spec.hole_d / 2 * s
-        x0, x1 = int(cx - r), int(cx + r) + 1
-        y0, y1 = int(cy - r), int(cy + r) + 1
-        vals.append(np.median(gb[y0:y1, x0:x1]))
-    lvl_hole = float(np.median(vals))
-
-    def refine(cx, cy, rad_mm):
-        r = rad_mm * s
-        R = 1.35 * r + 2
-        for _ in range(4):
-            x0, x1 = int(math.floor(cx - R)), int(math.ceil(cx + R)) + 1
-            y0, y1 = int(math.floor(cy - R)), int(math.ceil(cy + R)) + 1
-            if x0 < 0 or y0 < 0 or x1 > g.shape[1] or y1 > g.shape[0]:
-                return None
-            patch = gb[y0:y1, x0:x1]
-            yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
-            w = np.clip((patch - lvl_plate) / (lvl_hole - lvl_plate), 0, 1)
-            w *= ((xx - cx) ** 2 + (yy - cy) ** 2) <= R * R
-            sw = w.sum()
-            if sw <= 0:
-                return None
-            cx, cy = float((w * xx).sum() / sw), float((w * yy).sum() / sw)
-        d_mm = 2 * math.sqrt(sw / math.pi) / s
-        return cx, cy, d_mm
-
+    d, r_big = best["d"], spec.hole_d / 2 * s
+    pitch_px = spec.pitch * s
+    # every grid position the lattice predicts, then the blobs that the lattice missed
+    seeds = list(_lattice_px(best["big"], pitch_px, spec.n)) + list(best["big"])
     big, dbig = [], []
-    for cx, cy, _ in best["big"]:
-        r = refine(cx, cy, spec.hole_d / 2)
-        if r:
-            big.append(r[:2]); dbig.append(r[2])
+    for cx, cy in seeds:
+        if any(math.hypot(cx - bx, cy - by) < 0.4 * pitch_px for bx, by in big):
+            continue
+        r = _edge_circle(d, cx, cy, r_big)
+        if r and not any(math.hypot(r[0] - bx, r[1] - by) < 0.4 * pitch_px for bx, by in big):
+            big.append(r[:2]); dbig.append(2 * r[2] / s)
+
+    norm = best["norm"]
     small = []
-    for cx, cy, _ in best["small"]:
-        r = refine(cx, cy, spec.marker_d / 2)
-        if r:
-            small.append(r[:2])
-    return dict(big=np.array(big), small=np.array(small), hole_d=np.array(dbig),
-                dark_plate=best["dark_plate"], contrast=abs(lvl_hole - lvl_plate),
-                gb=gb, lvl_plate=lvl_plate, lvl_hole=lvl_hole, s=s)
+    R = int(math.ceil(0.9 * spec.marker_d * s))
+    for cx, cy in best["small"]:
+        x0, y0 = int(cx) - R, int(cy) - R
+        patch = norm[max(y0, 0):y0 + 2 * R + 1, max(x0, 0):x0 + 2 * R + 1]
+        if patch.size == 0 or patch.sum() <= 0:
+            continue
+        yy, xx = np.mgrid[max(y0, 0):max(y0, 0) + patch.shape[0], max(x0, 0):max(x0, 0) + patch.shape[1]]
+        small.append((float((patch * xx).sum() / patch.sum()), float((patch * yy).sum() / patch.sum())))
+
+    region = best["region"]
+    lvl_plate = float(np.median(gb[region & (norm < 0.2)]))
+    hole_vals = [gb[int(round(cy)), int(round(cx))] for cx, cy in big]
+    lvl_hole = float(np.median(hole_vals)) if hole_vals else float(gb.max())
+    return dict(big=np.array(big).reshape(-1, 2), small=np.array(small).reshape(-1, 2),
+                hole_d=np.array(dbig), dark_plate=best["dark_plate"],
+                contrast=abs(lvl_hole - lvl_plate), gb=gb, norm=norm,
+                lvl_plate=lvl_plate, lvl_hole=lvl_hole, s=s)
 
 
 # ---------------------------------------------------------------------------
@@ -266,8 +358,7 @@ def index_grid_by_lattice(det, big, spec: PlateSpec, to_mm):
     px = det["big"]
     M, *_ = np.linalg.lstsq(np.c_[to_mm(px), np.ones(len(px))], px, rcond=None)
     s = det["s"]
-    g = cv2.GaussianBlur(det["gb"], (0, 0), max(0.6, 0.15 * s))
-    lp, lh = det["lvl_plate"], det["lvl_hole"]
+    g = cv2.GaussianBlur(det["norm"], (0, 0), max(0.6, 0.15 * s))   # 0 = plate, 1 = hole
     R = max(1, int(round(0.5 * s)))
     yy, xx = np.mgrid[-R:R + 1, -R:R + 1]
     disk = xx ** 2 + yy ** 2 <= R * R
@@ -278,7 +369,7 @@ def index_grid_by_lattice(det, big, spec: PlateSpec, to_mm):
         if cx - R < 0 or cy - R < 0 or cx + R + 1 > g.shape[1] or cy + R + 1 > g.shape[0]:
             return 0.0
         v = g[cy - R:cy + R + 1, cx - R:cx + R + 1][disk].max()
-        return float(np.clip((v - lp) / (lh - lp), 0, 1))
+        return float(np.clip(v, 0, 1))
 
     m, h = 0.5, spec.y_pair_sep / 2 / p
     cands = []
