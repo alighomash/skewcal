@@ -131,7 +131,7 @@ Without `--span-x/--span-y`, the angle is unaffected, but absolute scale assumes
   - The fit is kept only when the bow is significant: more than 0.5 mm, and more than 3× its uncertainty. On a flat plate it only adds noise. `--warp` and `--no-warp` force it on or off.
   - A bow mostly affects scale; the angle is much less sensitive.
   - If one corner lifts, lay a sheet of clear glass over the plate *and* the markers. The glass shifts both equally, so it doesn't bias the result.
-- **Marker holes:** the three small holes only need to be partly open. If they're too closed-up to find, skewcal indexes the grid from the large holes alone, then checks where the marker holes should be to tell X from Y.
+- **Marker holes:** the three small holes are 2.4 mm (2.0 mm on plates made before 14 Oct 2026) and only need to be partly open. If they're too closed-up to find, skewcal indexes the grid from the large holes alone. It then compares the brightness at the marker positions of every corner with the plain positions, and accepts a corner only if it stands out clearly; otherwise it stops rather than guess. A wrong corner would flip the sign of the skew.
 
 ## 4. Read the result
 

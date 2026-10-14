@@ -28,7 +28,7 @@ class PlateSpec:
     n: int = 9                 # holes per side
     pitch: float = 12.5        # mm between hole centres
     hole_d: float = 4.0        # grid-hole diameter (mm)
-    marker_d: float = 2.0      # marker-hole diameter (mm)
+    marker_d: float = 2.4      # marker-hole diameter (mm); 2.0 before 2026-10-14 closed up on some prints
     y_pair_sep: float = 3.5    # centre-to-centre spacing of the Y-marker pair (mm)
     margin: float = 5.0        # solid border outside the outermost holes (mm)
     thickness: float = 1.6     # plate thickness (mm)
@@ -53,7 +53,7 @@ class PlateSpec:
         """A breakaway-cube wall: straight holes (they run sideways when printed
         upright), slightly larger markers because sideways holes print a little
         closed, and a 118 mm square so the floor plate fits inside the cube."""
-        return cls(rim=0.0, top_d=0.0, margin=7.0, marker_d=2.4, wall=True, id_holes=id_holes)
+        return cls(rim=0.0, top_d=0.0, margin=7.0, wall=True, id_holes=id_holes)
 
     def id_points(self) -> np.ndarray:
         """Centres of the ID holes in the top border (nominal coordinates)."""
@@ -134,7 +134,7 @@ class PlateSpec:
             walls["X marker to cone top"] = self.pitch / 2 - rm - rt
             walls["Y marker to cone top"] = self.pitch / 2 - self.y_pair_sep / 2 - rm - rt
             walls["between cone tops"] = self.pitch - 2 * rt
-        bad = {k: v for k, v in walls.items() if v < (0.5 if "cone top" in k else 0.9)}
+        bad = {k: v for k, v in walls.items() if v < (0.5 if "cone top" in k else 0.9) - 1e-9}
         if bad:
             raise ValueError("Walls too thin to print reliably (<0.9 mm): " +
                              ", ".join(f"{k} = {v:.2f} mm" for k, v in bad.items()))

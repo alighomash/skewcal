@@ -202,11 +202,12 @@ def main(argv=None):
 
     p = sub.add_parser("plate", help="generate the test-plate STL")
     p.add_argument("-o", "--output", default="skewcal_plate.stl")
-    p.add_argument("--n", type=int, default=9)
-    p.add_argument("--pitch", type=float, default=12.5)
-    p.add_argument("--hole-d", type=float, default=4.0)
-    p.add_argument("--marker-d", type=float, default=2.0)
-    p.add_argument("--thickness", type=float, default=1.6)
+    d = PlateSpec()                       # defaults come from the plate definition itself
+    p.add_argument("--n", type=int, default=d.n)
+    p.add_argument("--pitch", type=float, default=d.pitch)
+    p.add_argument("--hole-d", type=float, default=d.hole_d)
+    p.add_argument("--marker-d", type=float, default=d.marker_d)
+    p.add_argument("--thickness", type=float, default=d.thickness)
     p.add_argument("--standard", action="store_true",
                    help="straight holes (the original plate) instead of thin-rim holes")
     p.add_argument("--thin-rim", action="store_true", help=argparse.SUPPRESS)   # now the default
