@@ -396,13 +396,21 @@ def index_grid_by_lattice(det, big, spec: PlateSpec, to_mm):
             for dx, dy in ((a, b), (b, a)):
                 on = [o + m * dx, o + (m - h) * dy, o + (m + h) * dy]
                 off = [o + m * dy, o + (m - h) * dx, o + (m + h) * dx]
-                score = min(bright(z) for z in on) - max(bright(z) for z in off)
-                cands.append((score, o, dx, dy))
+                lo_on, hi_off = min(bright(z) for z in on), max(bright(z) for z in off)
+                # contrast of the dimmest marker position over the brightest plain one;
+                # works for markers that printed nearly closed (dim but still above the plate)
+                ratio = lo_on / max(hi_off, 0.03)
+                cands.append((ratio, lo_on - hi_off, o, dx, dy))
     cands.sort(key=lambda c: -c[0])
-    if cands[0][0] < 0.15 or cands[0][0] - cands[1][0] < 0.1:
-        raise RuntimeError("Could not identify the marker holes (they may be blocked); "
-                           "cannot tell X from Y.")
-    _, o, dx, dy = cands[0]
+    best, second = cands[0], cands[1]
+    # A wrong corner reports 180 deg minus the angle, so the choice must be clear:
+    # the old absolute test, or a clear contrast that stands well above the runner-up.
+    clear = (best[1] >= 0.15 and best[1] - max(second[1], 0) >= 0.1) or \
+            (best[0] >= 1.5 and best[0] >= 1.5 * max(second[0], 0.5) and best[1] >= 0.04)
+    if not clear:
+        raise RuntimeError("Could not identify the marker holes (they may be blocked or printed "
+                           "closed); cannot tell X from Y.")
+    _, _, o, dx, dy = best
     rel = ij[keep] - o
     nom = np.c_[rel @ dx, rel @ dy] * p
     return nom, big[keep]

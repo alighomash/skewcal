@@ -118,6 +118,11 @@ def format_report(results, names, combined, spec, mode, script_path=None, plane=
     if combined["reversal"] and len(results) < 4:
         P("           Tip: two more images, with the plate turned another 90 deg each time, average out")
         P("           image-to-image noise and give an honest uncertainty from the scatter.")
+    th_i = [r["theta"] - (combined.get("frame_bias_deg") or 0) * r["frame_sign"] for r in results]
+    if len(th_i) > 1 and max(th_i) - min(th_i) > 0.3:
+        P("WARNING: the images disagree by more than 0.3 deg. If a plate's small marker holes were")
+        P("         misread, its angle comes out as 180 deg minus the true angle. Check each image's")
+        P("         *_skewcal.jpg: the red X/Y arrows must start at the origin hole next to the markers.")
     if combined["reversal"]:
         P(f"Reference bias removed by 90-deg reversal: {combined['frame_bias_deg']:+.4f} deg")
     else:

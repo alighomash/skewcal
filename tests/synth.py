@@ -57,13 +57,15 @@ def _down(img):
 
 
 def render_scan(path, spec, M, dpi=600, rot=0.0, mirror=False, frame_e=0.0, kx=1.0, ky=1.0,
-                dark_plate=True, noise=0.01, blur=0.8, seed=0, droop=0.0):
+                dark_plate=True, noise=0.01, blur=0.8, seed=0, droop=0.0, marker_scale=1.0, marker_open=1.0):
+    """marker_open < 1: the small marker holes let through only that fraction of the
+    light (printed partly closed, with strands across them), as seen on real scans."""
     s = dpi / 25.4
     size = 1.5 * spec.size
     W = H = int(size * s)
     bg, fg = (230, 35) if dark_plate else (25, 215)
     img = np.full((H * SS, W * SS), bg, np.uint8)
-    outline, holes = plate_polys(spec, M, droop=droop)
+    outline, holes = plate_polys(spec, M, droop=droop, marker_scale=marker_scale)
     Rm = rot2(rot)
     Mi = np.diag([-1.0, 1.0]) if mirror else np.eye(2)
     F = np.array([[1, -math.sin(math.radians(frame_e))], [0, math.cos(math.radians(frame_e))]])
@@ -73,8 +75,10 @@ def render_scan(path, spec, M, dpi=600, rot=0.0, mirror=False, frame_e=0.0, kx=1
         q = p @ Q.T
         return np.c_[q[:, 0] * s + W / 2, -q[:, 1] * s + H / 2]
     _fill(img, to_px(outline), fg)
-    for h in holes:
-        _fill(img, to_px(h), bg)
+    n_grid = spec.n ** 2
+    for k, h in enumerate(holes):
+        val = bg if k < n_grid else int(round(fg + (bg - fg) * marker_open))
+        _fill(img, to_px(h), val)
     g = _down(img).astype(np.float32) / 255
     g = cv2.GaussianBlur(g, (0, 0), blur)
     rng = np.random.default_rng(seed)

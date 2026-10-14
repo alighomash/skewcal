@@ -184,6 +184,22 @@ try:
 except SystemExit:
     print("PASS  a cube wall without --plane is refused")
 
+# ---- 12. scans with marker holes printed nearly closed (real scans, 2026-10-14) -------------
+pm1 = os.path.join(OUT, "scan_closed_1.png"); pm2 = os.path.join(OUT, "scan_closed_2.png")
+# small and dim (60% size, 8% of the light): too faint to segment, and below the old
+# absolute threshold, like the markers on the 2026-10-14 scans
+synth.render_scan(pm1, spec, M, dpi=600, rot=-1.0, mirror=True, frame_e=0.03, marker_scale=0.6, marker_open=0.08, seed=50)
+synth.render_scan(pm2, spec, M, dpi=600, rot=89.0, mirror=True, frame_e=0.03, marker_scale=0.6, marker_open=0.08, seed=51)
+res, _ = run(["scan", pm1, pm2, "--out", OUT, "--no-annotate"])
+check("scan, marker holes printed nearly closed", res, th, sx, sy, 0.01, 4e-4)
+pm0 = os.path.join(OUT, "scan_nomarkers.png")
+synth.render_scan(pm0, spec, M, dpi=600, rot=2.0, marker_scale=0.0, seed=52)
+try:
+    run(["scan", pm0, "--out", OUT, "--no-annotate"])
+    print("FAIL  a plate without visible markers must be refused, not guessed"); failures.append("no markers")
+except SystemExit:
+    print("PASS  a plate without visible markers is refused")
+
 # ---- 10. plate .json files from before thin-rim plates still mean straight holes ----------
 import json  # noqa: E402
 old_js = os.path.join(OUT, "plate_old.json")
