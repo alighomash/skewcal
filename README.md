@@ -6,6 +6,8 @@ Print a flat plate with a 9×9 grid of holes. Scan or photograph it, and skewcal
 - the **X / Y scale** (how far apart the hole centres really are compared with how far apart they should be)
 - a ready-to-paste **PrusaSlicer post-processing line** that corrects the skew
 
+> **Beta.** Skewcal has so far been validated on a single Prusa MINI+, against a flatbed scanner and calipers. Results on other printers, scanners and phones are not yet confirmed. Check any correction with a test print before relying on it, and please report problems or results in the [issues](https://github.com/alighomash/skewcal/issues).
+
 Hole *centres* stay put when holes print too small or too large. That makes the result insensitive to flow, elephant's foot and over-extrusion, which is the weak point of caliper-based tests.
 
 ## Use it in your browser
@@ -247,3 +249,7 @@ The LiDAR isn't useful here. Its depth map is about 256 × 192 points with milli
 | `skewcal_reference_*.pdf` | phone reference sheets (Letter / A4, white or dark window) |
 | `tests/` | synthetic-image and G-code tests |
 | `web/`, `tools/build_web.py` | browser app (Python in Pyodide); `python3 tools/serve_web.py` runs it locally |
+
+## License
+
+The software is under the [MIT License](LICENSE). The printable models and reference sheets are under [CC BY 4.0](LICENSE-models.md).

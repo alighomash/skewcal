@@ -134,6 +134,7 @@ function showTab(name) {
   for (const t of $$(".tab")) t.setAttribute("aria-selected", String(t.dataset.tab === name));
   for (const p of $$(".panel")) p.hidden = p.id !== "panel-" + name;
   store.set("tab", name);
+  try { history.replaceState(null, "", "#" + name); } catch { /* not allowed in some frames */ }
   if (name === "correct") renderCorrect();
 }
 for (const t of $$(".tab")) t.addEventListener("click", () => showTab(t.dataset.tab));
@@ -1002,7 +1003,13 @@ async function boot() {
       renderResults();
     }
   } catch { /* the page still works without the example */ }
-  const tab = store.get("tab");
+  // a link such as .../#print opens that step; otherwise the last one used
+  const fromHash = location.hash.replace("#", "");
+  const tab = $("#panel-" + fromHash) ? fromHash : store.get("tab");
   if (tab && $("#panel-" + tab)) showTab(tab);
+  window.addEventListener("hashchange", () => {
+    const h = location.hash.replace("#", "");
+    if ($("#panel-" + h)) showTab(h);
+  });
 }
 boot();

@@ -112,6 +112,10 @@ code, .mono { font-family: var(--f-mono); font-size: 0.92em; }
 .intro h1 { font-size: clamp(1.5rem, 3vw, 2rem); }
 .intro p { color: var(--bar-muted); max-width: 60ch; margin-top: 8px; }
 
+.beta { background: var(--warn-soft); border-bottom: 1px solid var(--rule); font-size: 0.86rem; }
+.beta .wrap { padding-block: 8px; }
+.beta strong { color: var(--warn); }
+
 /* ---------- generic pieces ---------- */
 .card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); padding: 20px; min-width: 0; box-shadow: var(--shadow); }
 .card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -273,6 +277,9 @@ ul.rules li::marker { color: var(--accent); }
     <button class="tab" role="tab" id="tab-correct" aria-controls="panel-correct" aria-selected="false" data-tab="correct"><b>4</b>Correct</button>
   </div>
 </nav>
+<div class="beta" role="note">
+  <div class="wrap"><strong>Beta.</strong> Skewcal has so far been validated against a flatbed scanner and calipers on a single Prusa MINI+. Check any correction with a test print before relying on it, and please <a href="https://github.com/alighomash/skewcal/issues">report problems or results from other printers</a>.</div>
+</div>
 <section class="intro">
   <div class="wrap">
     <div>
