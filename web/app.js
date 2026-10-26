@@ -314,10 +314,10 @@ async function runAnalysis() {
     if (c.data.ok) {
       state.result = c.data;
       if (!state.sampleRun) store.set(lastKey(plane), { theta: c.data.combined.theta, theta_std: c.data.combined.theta_std, when: Date.now() });
-      $("#runNote").textContent = "Done. Results are on the right.";
+      $("#runNote").textContent = "Done. See the results.";
     } else {
       state.result = { ok: false, images: c.data.images, mode: state.mode };
-      $("#runNote").textContent = "No image could be measured. See the messages on the right.";
+      $("#runNote").textContent = "No image could be measured. See the messages in the results.";
     }
     renderResults();
   } catch (e) {
@@ -366,9 +366,9 @@ $("#samples").addEventListener("click", async (e) => {
 // ------------------------------------------------------------------ results
 function verdict(skew) {
   const a = Math.abs(skew);
-  if (a < 0.02) return '<span class="chip ok">Square. No correction needed</span>';
-  if (a < 0.05) return '<span class="chip info">Small skew. Correction optional</span>';
-  return '<span class="chip warn">Correction recommended</span>';
+  if (a < 0.02) return '<span class="chip ok">Below 0.02°: no correction needed</span>';
+  if (a < 0.05) return '<span class="chip info">0.02–0.05°: correction optional</span>';
+  return '<span class="chip warn">Above 0.05°: correction recommended</span>';
 }
 
 function renderResults() {
@@ -386,7 +386,7 @@ function renderResults() {
   const diag = Math.SQRT2 * 100 * Math.cos((c.theta * Math.PI) / 180);
   const okImgs = R.images.filter((i) => i.ok);
   const banner = state.sample
-    ? `<div class="banner"><span class="chip info">Example</span><span>Sample scans: ${esc(state.sample.title)}. Add your own images on the left to measure your printer.</span></div>` : "";
+    ? `<div class="banner"><span class="chip info">Example</span><span>Sample scans: ${esc(state.sample.title)}. Add your own images to measure your printer.</span></div>` : "";
   const side = skew < 0 ? "+" : "−";
   const lean = Math.abs(skew) < 0.02 ? `${A} and ${B} are square to within the measurement uncertainty.`
     : B === "Z" ? `The Z axis leans toward ${side}${A}, so tall parts lean that way as they rise.`
@@ -447,7 +447,7 @@ function renderResults() {
           ? (okImgs[0].result.reference === "screen"
             ? "Assumes the tablet's published ppi is exact, which is often true only to about 0.3%. Measure the on-screen 100 mm bar with calipers and enter it for exact scale."
             : "Assumes the reference sheet printed at exactly 100%. Enter your measured sheet spans for exact scale.")
-          : `To compensate in the slicer, scale objects to X ${fx(100 / c.scale_x, 2)}% and Y ${fx(100 / c.scale_y, 2)}%. Only worth it for tight fits.`}</p>
+          : `To compensate in the slicer, scale objects to X ${fx(100 / c.scale_x, 2)}% and Y ${fx(100 / c.scale_y, 2)}%. Usually only relevant for parts with tight fits.`}</p>
       </div>
       <div class="card">
         <header><h3>Quality checks</h3></header>
@@ -613,7 +613,7 @@ function drawChecks(R, imgs) {
   if (c.reversal) {
     add(imgs.length >= 4 && na >= 2 && nb >= 2 ? "ok" : "info", `${imgs.length} images: ${na} at 0°/180°, ${nb} at 90°/270°`,
       imgs.length >= 4 && na >= 2 && nb >= 2 ? "Enough images for the scatter between them to set the uncertainty."
-        : "Two more images, with the plate turned another 90° each time, average out image-to-image noise and give an honest uncertainty.");
+        : "Two more images, with the plate turned another 90° each time, average out image-to-image noise and give an uncertainty based on the observed scatter.");
   }
   const minHoles = Math.min(...imgs.map((i) => i.result.n_holes / i.result.n_expected));
   add(minHoles >= 0.95 ? "ok" : minHoles >= 0.8 ? "warn" : "bad", `${Math.round(minHoles * 81)} of 81 holes used (worst image)`,
@@ -641,7 +641,7 @@ function drawChecks(R, imgs) {
     }
     const foc = imgs.map((i) => i.result.focal_src);
     add(foc.every((f) => f === "EXIF") ? "ok" : "warn", foc.every((f) => f === "EXIF") ? "Focal length read from the photos" : "Focal length estimated",
-      foc.every((f) => f === "EXIF") ? "Camera distance is known, so plate thickness is corrected exactly." : "Use the original photo files so the focal length is available.");
+      foc.every((f) => f === "EXIF") ? "The camera distance is known, so the parallax from plate thickness is corrected." : "Use the original photo files so the focal length is available.");
   }
   if (imgs.length > 1) {
     const spread = Math.max(...imgs.map((i) => i.result.theta)) - Math.min(...imgs.map((i) => i.result.theta));

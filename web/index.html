@@ -110,10 +110,7 @@ code, .mono { font-family: var(--f-mono); font-size: 0.92em; }
 .intro { background: var(--bar-2); color: var(--bar-ink); }
 .intro .wrap { padding-block: 18px 22px; display: flex; gap: 20px; align-items: end; justify-content: space-between; flex-wrap: wrap; }
 .intro h1 { font-size: clamp(1.5rem, 3vw, 2rem); }
-.intro h1 em { font-style: normal; color: var(--accent); }
 .intro p { color: var(--bar-muted); max-width: 60ch; margin-top: 8px; }
-.pills { display: flex; gap: 8px; flex-wrap: wrap; }
-.pill { padding: 5px 12px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.16); color: var(--bar-ink); font-size: 0.82rem; font-weight: 600; white-space: nowrap; }
 
 /* ---------- generic pieces ---------- */
 .card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); padding: 20px; min-width: 0; box-shadow: var(--shadow); }
@@ -172,7 +169,6 @@ code, .mono { font-family: var(--f-mono); font-size: 0.92em; }
 .model-body .btn { margin-top: auto; }
 .tags { display: flex; gap: 6px; flex-wrap: wrap; }
 .tag { padding: 2px 9px; border-radius: 4px; background: var(--surface-2); color: var(--muted); font-size: 0.74rem; font-weight: 700; letter-spacing: 0.02em; }
-.tag.hot { background: var(--accent); color: var(--on-accent); }
 .stats { display: flex; gap: 14px; flex-wrap: wrap; list-style: none; margin: 0; padding: 10px 0 0; border-top: 1px solid var(--rule); font-size: 0.84rem; color: var(--muted); }
 .stats b { color: var(--ink); font-weight: 700; }
 .sheetbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
@@ -227,6 +223,7 @@ table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
 th { text-align: left; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.72rem; color: var(--muted); padding: 7px 10px; border-bottom: 2px solid var(--rule); white-space: nowrap; }
 td { padding: 8px 10px; border-bottom: 1px solid var(--rule); font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 td.name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+td.txt { font-family: var(--f-body); white-space: normal; min-width: 140px; }
 details.report summary { cursor: pointer; font-weight: 700; }
 pre.report { margin: 12px 0 0; padding: 14px; border-radius: 8px; background: var(--surface-2); font: 0.8rem/1.5 var(--f-mono); overflow-x: auto; white-space: pre; }
 .errors { font-size: 0.86rem; color: var(--bad); }
@@ -247,7 +244,6 @@ ul.rules li::marker { color: var(--accent); }
 .spec .v { font-weight: 700; font-size: 1.02rem; }
 .cmd { display: flex; gap: 8px; align-items: stretch; }
 .cmd code { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 6px; background: var(--bar); color: #f3f3f3; overflow-x: auto; white-space: nowrap; font-size: 0.84rem; }
-.badge-rec { padding: 3px 9px; border-radius: 4px; background: var(--accent); color: var(--on-accent); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.68rem; }
 
 /* ---------- footer ---------- */
 .foot { background: var(--bar); color: var(--bar-muted); font-size: 0.84rem; }
@@ -280,10 +276,9 @@ ul.rules li::marker { color: var(--accent); }
 <section class="intro">
   <div class="wrap">
     <div>
-      <h1>Is your printer <em>square</em>?</h1>
-      <p>Print a hole-grid plate, scan it or photograph it on a tablet, and measure your printer's skew to a hundredth of a degree. Then correct it in your slicer.</p>
+      <h1>Printer axis skew measurement</h1>
+      <p>Measures the angle between a 3D printer's X and Y axes, and between X/Y and Z with the cube, from scans or photographs of a printed hole-grid object. Produces a G-code correction. Images are processed locally in the browser.</p>
     </div>
-    <div class="pills"><span class="pill">Runs in your browser</span><span class="pill">No calipers</span><span class="pill">Open source</span></div>
   </div>
 </section>
 
@@ -299,9 +294,9 @@ ul.rules li::marker { color: var(--accent); }
       <article class="model">
         <div class="model-img" id="imgThin"></div>
         <div class="model-body">
-          <div class="tags"><span class="tag hot">Recommended</span><span class="tag">XY</span><span class="tag">Scanner</span><span class="tag">Tablet</span></div>
+          <div class="tags"><span class="tag">XY</span><span class="tag">Default</span></div>
           <h3>Thin-rim test plate</h3>
-          <p class="note">Holes are 4 mm only in the bottom 0.6 mm, then widen to 5.6 mm, so the edge the camera sees is a thin first-layer rim. Best for phone photos, as good as straight holes for scans.</p>
+          <p class="note">Holes are 4 mm for the first 0.6 mm and widen to 5.6 mm above, so the visible hole edge is the first-layer rim. This reduces the effect of lighting and viewing angle in photographs. Scans are unaffected. Lay it first-layer side down.</p>
           <ul class="stats"><li><b>114 × 114</b> × 1.6 mm</li><li><b>81</b> holes</li><li>about <b>23 g</b></li></ul>
           <button class="btn primary" data-model="skewcal_plate">Download STL</button>
         </div>
@@ -309,9 +304,9 @@ ul.rules li::marker { color: var(--accent); }
       <article class="model">
         <div class="model-img" id="imgCube"></div>
         <div class="model-body">
-          <div class="tags"><span class="tag">XY</span><span class="tag">XZ</span><span class="tag">YZ</span><span class="tag">Breakaway</span></div>
-          <h3>Breakaway skew cube</h3>
-          <p class="note">Four upright walls and the thin-rim plate as the floor: all three angles in one print. Labelled faces, snap-off corner tabs. Print with an outer-only brim.</p>
+          <div class="tags"><span class="tag">XY</span><span class="tag">XZ</span><span class="tag">YZ</span></div>
+          <h3>Breakaway cube</h3>
+          <p class="note">Four upright hole-grid walls joined by snap-off corner tabs, with the thin-rim plate as the floor. Front and back walls give X–Z, left and right give Y–Z. Each part is labelled on its outer face.</p>
           <ul class="stats"><li><b>120 × 120 × 118</b> mm</li><li><b>5</b> parts</li><li>about <b>125 g</b></li></ul>
           <button class="btn primary" data-model="skewcal_cube">Download STL</button>
         </div>
@@ -319,9 +314,9 @@ ul.rules li::marker { color: var(--accent); }
       <article class="model">
         <div class="model-img" id="imgStd"></div>
         <div class="model-body">
-          <div class="tags"><span class="tag">XY</span><span class="tag">Scanner</span></div>
+          <div class="tags"><span class="tag">XY</span><span class="tag">Straight holes</span></div>
           <h3>Standard test plate</h3>
-          <p class="note">The original plate with straight 4 mm holes. Choose Standard when you measure it.</p>
+          <p class="note">The original design with straight 4 mm holes. Suitable for scanning. Select Plate: Standard when measuring it.</p>
           <ul class="stats"><li><b>114 × 114</b> × 1.6 mm</li><li><b>81</b> holes</li><li>about <b>24 g</b></li></ul>
           <button class="btn" data-model="skewcal_plate_standard">Download STL</button>
         </div>
@@ -329,9 +324,9 @@ ul.rules li::marker { color: var(--accent); }
       <article class="model">
         <div class="model-img" id="imgSheet"></div>
         <div class="model-body">
-          <div class="tags"><span class="tag">Phone</span><span class="tag">Paper</span></div>
+          <div class="tags"><span class="tag">Photo reference</span></div>
           <h3>Reference sheet</h3>
-          <p class="note">Only for phone photos without a tablet. Print at <strong>100% / Actual size</strong>, then measure the two arrowed spans for exact scale. Dark window for light-coloured plates.</p>
+          <p class="note">Marker ring for photographs when no tablet is available. Print at <strong>100% / Actual size</strong> and measure the two arrowed spans; printers rarely reproduce paper scale exactly. Use the dark-window version for light-coloured plates.</p>
           <div class="sheetbtns" id="sheetButtons">
             <button class="btn small" data-sheet="letter">Letter</button>
             <button class="btn small" data-sheet="letter_dark">Letter, dark</button>
@@ -364,10 +359,27 @@ ul.rules li::marker { color: var(--accent); }
 
   <!-- ===================== 2 CAPTURE ===================== -->
   <section class="panel" id="panel-capture" role="tabpanel" aria-labelledby="tab-capture" hidden>
-    <p class="lede">Take at least two images and <strong>turn the plate 90° between them</strong>. No scanner or paper sheet is perfectly square. Turning the plate flips the sign of that error, so Skewcal can measure it and remove it.</p>
+    <div class="pagehead">
+      <h2>Capture images</h2>
+      <p class="lede">Take at least two images with the object <strong>turned 90° between them</strong>. Neither a scanner nor a reference sheet is exactly square; turning the object reverses the sign of that error relative to the printer's, so the two can be separated.</p>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <header><h3>Methods compared</h3><span class="note">Measured on one Prusa MINI+, two images each. Results depend on print quality.</span></header>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Angle uncertainty</th><th>Absolute scale</th><th>Requires</th></tr></thead>
+          <tbody>
+            <tr><td class="txt">Flatbed scanner, 600 dpi</td><td>±0.006°</td><td class="txt">Correct without calibration</td><td class="txt">A flatbed scanner</td></tr>
+            <tr><td class="txt">Phone + tablet reference</td><td>±0.003°</td><td class="txt">Within 0.01% once the on-screen bar is measured</td><td class="txt">11-inch or larger tablet, phone with a 2× or 3× lens</td></tr>
+            <tr><td class="txt">Phone + paper sheet</td><td>±0.008–0.011°</td><td class="txt">Depends on print scale; enter measured spans</td><td class="txt">Printed reference sheet</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note" style="margin-top:10px">For scale: 0.1° of skew is 0.17 mm of drift per 100 mm of travel. Four images (0°, 90°, 180°, 270°) instead of two average out image-to-image noise and give an uncertainty based on the observed scatter.</p>
+    </div>
     <div class="guide">
       <div class="card stack">
-        <header><h2>Flatbed scanner</h2><span class="badge-rec">Most accurate</span></header>
+        <header><h3>Flatbed scanner</h3></header>
         <div id="turnDrawing"></div>
         <ol class="steps">
           <li>Lay the plate on the glass near the middle, either side down.</li>
@@ -379,7 +391,7 @@ ul.rules li::marker { color: var(--accent); }
         <p class="note">JPEG scans work too if the file keeps its dpi. Otherwise enter the dpi by hand.</p>
       </div>
       <div class="card stack">
-        <header><h2>Phone camera</h2><span class="chip info">Take four photos</span></header>
+        <header><h3>Phone camera</h3></header>
         <ol class="steps">
           <li>Show the reference on a tablet (below), or print the paper sheet at 100% and tape it to a flat, hard table.</li>
           <li>Lay the plate inside the window, first-layer side down.</li>
@@ -388,28 +400,43 @@ ul.rules li::marker { color: var(--accent); }
           <li>Turn the plate 90° on the sheet and take another photo. Repeat until you have four: 0°, 90°, 180°, 270°. Turning the phone doesn't count.</li>
           <li>Use the original files. Photos sent through chat apps are shrunk and lose the focal length.</li>
         </ol>
-        <p class="note">With paper, absolute scale depends on the sheet printing at exactly 100%. Enter your measured spans for exact scale. A tablet screen needs no measuring.</p>
+        <p class="note">With the paper sheet, absolute scale depends on the sheet printing at exactly 100%; enter the measured spans. With a tablet, measure its 100 mm bar once per model.</p>
       </div>
       <div class="card stack" style="grid-column:1/-1">
-        <header><h2>Cube walls</h2><span class="badge-rec">X–Z and Y–Z</span></header>
-        <p>Snap the four walls off the cube at the corner tabs. Each wall is then measured exactly like the flat plate, with the scanner, the tablet or the paper sheet, lying flat.</p>
+        <header><h3>Cube walls (X–Z, Y–Z)</h3></header>
+        <p>Separate the walls at the corner tabs. Each wall is then captured like the flat plate, lying flat on the scanner, tablet or sheet.</p>
         <ul class="rules">
           <li>Every piece is labelled on its outer face: <strong>FRONT XZ</strong>, <strong>BACK XZ</strong>, <strong>LEFT YZ</strong>, <strong>RIGHT YZ</strong> and <strong>FLOOR XY</strong>. The arrow points to the top as printed. Front and back measure <strong>X–Z</strong>, left and right measure <strong>Y–Z</strong>, the floor measures X–Y.</li>
-          <li><strong>Lay every piece letters-up</strong>, on the scanner, the tablet or the sheet. The raised letters must not touch the glass, and letters-up also means you never flip a wall by mistake.</li>
-          <li>Two images per wall, turned 90° between them. Turn it, don't flip it over: flipping and turning together doesn't cancel the scanner's own error.</li>
-          <li>Measure both walls of a pair together (four images), and choose Plate: Cube wall with the right plane. The two walls cross-check each other.</li>
+          <li>Lay every piece <strong>letters-up</strong>. The raised letters must not touch the glass, and a consistent side up prevents flipping a wall between images.</li>
+          <li>Two images per wall, turned 90° between them. Turning combined with flipping does not reverse the reference error, so do not flip a wall within a pair.</li>
+          <li>Measure both walls of a pair together (four images) with Plate: Cube wall and the matching plane. Agreement between the two walls is a consistency check.</li>
         </ul>
       </div>
       <div class="card stack" style="grid-column:1/-1">
-        <header><h2>Tablet as the reference</h2><span class="badge-rec">Exact scale, perfectly flat</span></header>
-        <p>Open this page on an iPad, lay it flat, and show the marker ring full screen. A screen's pixels are spaced exactly, so scale needs no ruler check, and glass is flatter than paper. The plate lies on the screen; its holes glow from the backlight.</p>
+        <header><h3>Tablet reference</h3></header>
+        <p>The marker ring can be displayed on a tablet instead of printed. Open this page on the tablet, lay it flat and show the ring full screen; the object lies on the screen and its holes are lit from below. A display is flatter than paper and its pixel pitch is uniform. Published ppi values are rounded, so measure the 100 mm bar once per tablet model.</p>
         <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
           <div class="field"><label for="tabModel">This screen</label><select id="tabModel"></select></div>
           <div class="field" id="tabPpiWrap" hidden><label for="tabPpi">Pixels per inch</label><input id="tabPpi" type="number" min="100" max="600" step="0.1" placeholder="264"></div>
           <label class="row note" for="tabDark" style="align-self:end"><input type="checkbox" id="tabDark"> Dark window, for a light-coloured plate</label>
         </div>
         <div class="row"><button class="btn primary" id="tabShow">Show reference on this screen</button><span class="note" id="tabNote"></span></div>
-        <p class="note">Turn brightness up and auto-lock off, and don't zoom the page. Wipe the screen first: dust under the plate lifts it. A 100 mm bar is drawn beside the ring. For exact scale, measure it with calipers and enter the length when you measure. Models marked "calibrated" have been checked this way already.</p>
+        <p class="note">Set brightness high, turn auto-lock off and keep the page at 100% zoom. Clean the screen; dust under the object raises it. Enter the measured bar length in the Measure tab. Models marked "calibrated" have a corrected ppi value.</p>
+      </div>
+      <div class="card stack" style="grid-column:1/-1">
+        <header><h3>Method and limitations</h3></header>
+        <div class="guide" style="gap:16px 28px">
+          <ul class="rules">
+            <li><strong>Measurement.</strong> Each hole centre is located to sub-pixel precision. The centres are fitted to the nominal 12.5 mm grid with an affine model, which gives the angle between the two grid directions and a scale for each.</li>
+            <li><strong>Hole centres, not edges.</strong> Over- or under-extrusion and elephant's foot change hole size but not position, so they do not bias the angle.</li>
+            <li><strong>Reference error.</strong> The 90° turn separates the scanner's or sheet's own squareness error from the printer's. The report shows the amount removed.</li>
+          </ul>
+          <ul class="rules">
+            <li><strong>Linear only.</strong> The result is the average angle over the 100 mm grid. Local position errors, such as belt or pulley irregularities, are not corrected.</li>
+            <li><strong>Photograph scale</strong> depends on the reference's true size and on the object lying flat. A bowed object is modelled when the fit shows a significant bow.</li>
+            <li><strong>Marker holes</strong> must be at least partly open. If they cannot be identified with confidence, the analysis stops instead of guessing, since a wrong corner reverses the sign of the skew.</li>
+          </ul>
+        </div>
       </div>
     </div>
   </section>
@@ -467,7 +494,10 @@ ul.rules li::marker { color: var(--accent); }
 
   <!-- ===================== 4 CORRECT ===================== -->
   <section class="panel" id="panel-correct" role="tabpanel" aria-labelledby="tab-correct" hidden>
-    <p class="lede">Most printer firmware can't correct skew, so Skewcal corrects the G-code instead. It moves every XY coordinate by the inverse of the measured skew about the bed centre. Arcs are converted to short lines.</p>
+    <div class="pagehead">
+      <h2>Apply the correction</h2>
+      <p class="lede">If your firmware supports skew compensation (for example Klipper's <code>SET_SKEW</code>, or Marlin's <code>M852</code> when enabled), you can enter the measured angle there. Otherwise the G-code can be corrected: each X/Y coordinate is transformed by the inverse of the measured skew about the bed centre, arcs are converted to short line segments, and X–Z / Y–Z corrections shift X and Y in proportion to height. Z values are not changed.</p>
+    </div>
     <div class="card stack" style="margin-bottom:20px">
       <div class="fields" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
         <div class="field"><label for="corAngle">XY angle, °</label><input id="corAngle" type="number" step="0.0001" min="87" max="93"></div>
@@ -487,11 +517,11 @@ ul.rules li::marker { color: var(--accent); }
     </div>
     <div class="guide">
       <div class="card stack">
-        <header><h2>PrusaSlicer post-processing</h2><span class="badge-rec">Set once</span></header>
-        <p>Every file you slice is corrected automatically. Needs Python 3, which macOS and Linux already have.</p>
+        <header><h3>Slicer post-processing script</h3></header>
+        <p>Applied automatically to every exported file. Requires Python 3 (included with macOS and most Linux systems).</p>
         <ol class="steps">
           <li><button class="btn small" id="saveScript">Save skew_gcode.py</button> and unzip it somewhere permanent.</li>
-          <li>In PrusaSlicer open <strong>Print Settings → Output options → Post-processing scripts</strong>.</li>
+          <li>Open the post-processing field. PrusaSlicer: <strong>Print Settings → Output options → Post-processing scripts</strong>. OrcaSlicer: <strong>Process → Others → Post-processing scripts</strong> (advanced mode).</li>
           <li>Paste this line, with the real path to the file:</li>
         </ol>
         <div class="seg" role="group" aria-label="Operating system">
@@ -499,11 +529,11 @@ ul.rules li::marker { color: var(--accent); }
           <button type="button" id="osWin" aria-pressed="false">Windows</button>
         </div>
         <div class="cmd"><code id="cmdLine"></code><button class="btn small" id="copyCmd">Copy</button></div>
-        <p class="note">Turn off <strong>Printer Settings → General → Supports binary G-code</strong>. The script can only edit text G-code.</p>
+        <p class="note">The script edits text G-code only; disable binary G-code output in the printer settings. The slicer preview shows uncorrected paths. Exported files begin with a <code>; skew_gcode:</code> line listing the angles applied.</p>
       </div>
       <div class="card stack">
-        <header><h2>Correct one file here</h2></header>
-        <p>For other slicers, or to try it first. Pick a plain-text .gcode file. It's corrected in your browser and saved as a .zip.</p>
+        <header><h3>Correct a single file</h3></header>
+        <p>For slicers without post-processing scripts, or to check the result first. The file is processed in the browser and returned as a .zip.</p>
         <label class="drop" id="gdrop" for="gInput">
           <strong>Add a G-code file</strong>
           <span class="note" id="gHint">.gcode, not binary .bgcode</span>
@@ -518,7 +548,7 @@ ul.rules li::marker { color: var(--accent); }
 <footer class="foot">
   <div class="wrap">
     <span>Skewcal is an independent, open-source tool. It is not affiliated with or endorsed by Prusa Research or Printables.</span>
-    <a href="https://github.com/alighomash/skewcal">Source on GitHub</a>
+    <span><a href="https://github.com/alighomash/skewcal#readme">Documentation</a> · <a href="https://github.com/alighomash/skewcal">Source</a></span>
   </div>
 </footer>
 <div class="toast" id="toast" hidden></div>
