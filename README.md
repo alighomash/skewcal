@@ -6,13 +6,15 @@ Print a flat plate with a 9×9 grid of holes. Scan or photograph it, and skewcal
 - the **X / Y scale** (how far apart the hole centres really are compared with how far apart they should be)
 - a ready-to-paste **PrusaSlicer post-processing line** that corrects the skew
 
-> **Beta.** Skewcal has so far been validated on a single Prusa MINI+, against a flatbed scanner and calipers. Results on other printers, scanners and phones are not yet confirmed. Check any correction with a test print before relying on it, and please report problems or results in the [issues](https://github.com/alighomash/skewcal/issues).
+> **Beta.** Skewcal has so far been validated on a single Prusa MINI+, against a flatbed scanner and calipers. Results on other printers, scanners and phones are not yet confirmed. Check any correction with a test print before relying on it, and please report problems or results in the [issues](https://github.com/alighomash/skewcal/issues) or in the comments on [Printables](https://www.printables.com/model/1891628).
 
 Hole *centres* stay put when holes print too small or too large. That makes the result insensitive to flow, elephant's foot and over-extrusion, which is the weak point of caliper-based tests.
 
 ## Use it in your browser
 
 **https://alighomash.github.io/skewcal/** runs the same analysis with nothing to install. It runs on a phone too. Images are processed on your device and never uploaded. The page walks through printing the plate, scanning or photographing it, reading the results and correcting your G-code. On an iPad it also shows the tablet reference (section 3b). It opens on an example result from a Prusa MINI+.
+
+The test plate, cube and reference sheets are also on **[Printables](https://www.printables.com/model/1891628)**, where you can post your prints and results.
 
 The rest of this README covers the command-line version.
 
