@@ -691,7 +691,7 @@ function drawViewer() {
       if (Math.hypot(ex - cx, ey - cy) > 1.5) s += `<line x1="${cx}" y1="${cy}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arrR)"><title>${fx(Math.hypot(r0, r1) * 1000, 0)} µm</title></line>`;
       else s += `<circle cx="${cx}" cy="${cy}" r="1.6" fill="var(--accent)"/>`;
     } else {
-      s += `<circle cx="${cx}" cy="${cy}" r="${2 * sc}" fill="var(--mark-soft)" stroke="var(--mark)" stroke-width="1.2"><title>Rejected as an outlier: ${fx(Math.hypot(r0, r1) * 1000, 0)} µm</title></circle>`;
+      s += `<circle cx="${cx}" cy="${cy}" r="${2 * sc}" fill="var(--bad-soft)" stroke="var(--bad)" stroke-width="1.2"><title>Rejected as an outlier: ${fx(Math.hypot(r0, r1) * 1000, 0)} µm</title></circle>`;
     }
   });
   const bar = 0.05 * gain * sc;
@@ -789,89 +789,91 @@ async function correctGcode(file) {
 }
 
 // ------------------------------------------------------------------ print / capture drawings
-function plateSvg(rot = 0, size = 150, label = "") {
+const PLASTIC = "#2a2a2a", PLASTIC_HI = "#3a3a3a", PLASTIC_SIDE = "#202020", LIGHT = "#f4f4f4";   // holes are lit from behind
+function plateSvg(rot = 0, size = 150, opts = {}) {
   const n = 9, pitch = 12.5, edge = 7, span = 100, total = span + 2 * edge;
   const s = size / total;
-  let g = `<rect x="0" y="0" width="${size}" height="${size}" rx="${3 * s}" fill="var(--ink)"/>`;
+  let g = `<rect x="0" y="0" width="${size}" height="${size}" rx="${3 * s}" fill="${PLASTIC}"/>`;
   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
-    g += `<circle cx="${((edge + i * pitch) * s).toFixed(1)}" cy="${(size - (edge + j * pitch) * s).toFixed(1)}" r="${(2 * s).toFixed(2)}" fill="var(--surface)"/>`;
+    const cx = ((edge + i * pitch) * s).toFixed(1), cy = (size - (edge + j * pitch) * s).toFixed(1);
+    if (opts.cone) g += `<circle cx="${cx}" cy="${cy}" r="${(2.8 * s).toFixed(2)}" fill="${PLASTIC_HI}"/>`;
+    g += `<circle cx="${cx}" cy="${cy}" r="${(2 * s).toFixed(2)}" fill="${LIGHT}"/>`;
   }
   // marker holes: X marker between (0,0) and (1,0); Y pair between (0,0) and (0,1)
-  g += `<circle cx="${((edge + 6.25) * s).toFixed(1)}" cy="${(size - edge * s).toFixed(1)}" r="${s}" fill="var(--mark)"/>`;
-  for (const dy of [-1.75, 1.75]) g += `<circle cx="${(edge * s).toFixed(1)}" cy="${(size - (edge + 6.25 + dy) * s).toFixed(1)}" r="${s}" fill="var(--mark)"/>`;
-  return `<g transform="rotate(${rot} ${size / 2} ${size / 2})">${g}</g>${label}`;
+  g += `<circle cx="${((edge + 6.25) * s).toFixed(1)}" cy="${(size - edge * s).toFixed(1)}" r="${1.2 * s}" fill="var(--accent)"/>`;
+  for (const dy of [-1.75, 1.75]) g += `<circle cx="${(edge * s).toFixed(1)}" cy="${(size - (edge + 6.25 + dy) * s).toFixed(1)}" r="${1.2 * s}" fill="var(--accent)"/>`;
+  return `<g transform="rotate(${rot} ${size / 2} ${size / 2})">${g}</g>`;
 }
-let plateDrawingSvg = "";
+function plateCardSvg(cone) {
+  return `<svg viewBox="0 0 220 165" role="img" aria-label="${cone ? "Thin-rim" : "Standard"} test plate, top view; the small orange holes mark the origin">
+    <g transform="translate(40 4)">${plateSvg(0, 140, { cone })}</g>
+    <text x="110" y="160" text-anchor="middle" style="font:600 10px var(--f-body);fill:#6b6b6b">orange: origin markers, front left</text></svg>`;
+}
 function cubeSvg() {
-  // top view of the pinwheel: walls as thick lines, floor plate inside
-  const s = 1.45, o = 30, S = 120.4 * s, t = 5, w = 118 * s;
-  const R = (x, y, ww, hh) => `<rect x="${o + x}" y="${o + y}" width="${ww}" height="${hh}" fill="var(--ink)"/>`;
-  return `<svg class="chart" viewBox="0 0 360 ${S + 70}" role="img" aria-label="Breakaway cube, top view: four walls around the floor plate">
-    ${R(0, S - t, w, t)}${R(S - t, S - w, t, w)}${R(S - w, 0, w, t)}${R(0, 0, t, w)}
-    <rect x="${o + (S - 114 * s) / 2}" y="${o + (S - 114 * s) / 2}" width="${114 * s}" height="${114 * s}" rx="3" fill="var(--surface-2)" stroke="var(--rule)"/>
-    <text x="${o + S / 2}" y="${o + S / 2 - 6}" text-anchor="middle" class="t-ink" style="font-size:12px">floor plate</text>
-    <text x="${o + S / 2}" y="${o + S / 2 + 10}" text-anchor="middle">X–Y</text>
-    <text x="${o + S / 2}" y="${o + S + 20}" text-anchor="middle" class="t-mark" style="font-size:11px">FRONT XZ</text>
-    <text x="${o + S / 2}" y="${o - 8}" text-anchor="middle" class="t-mark" style="font-size:11px">BACK XZ</text>
-    <text x="${o + S + 12}" y="${o + S / 2}" class="t-mark" style="font-size:11px" transform="rotate(90 ${o + S + 12} ${o + S / 2})" text-anchor="middle">RIGHT YZ</text>
-    <text x="${o - 12}" y="${o + S / 2}" class="t-mark" style="font-size:11px" transform="rotate(-90 ${o - 12} ${o + S / 2})" text-anchor="middle">LEFT YZ</text>
-    <text x="${o}" y="${o + S + 50}" style="font-size:11px">top view · raised labels on each outer face · snap-off corner tabs</text></svg>`;
+  // isometric view from the front right of the open box: inner faces of the back and
+  // left walls (with their holes), wall-top rims, then the front and right outer faces
+  const S = 120.4, H = 118, t = 2.2, c = Math.cos(Math.PI / 6), sn = 0.5, k = 0.9;
+  const P = (x, y, z) => [(x + y) * c * k + 8, (x - y) * sn * k - z * k + 214];
+  const f = (v) => v.toFixed(1);
+  const poly = (pts, fill) => `<polygon points="${pts.map((p) => P(...p).map(f).join(",")).join(" ")}" fill="${fill}"/>`;
+  const hole = (x, y, z, rot, op) => {
+    const [hx, hy] = P(x, y, z);
+    return `<ellipse cx="${f(hx)}" cy="${f(hy)}" rx="${(2 * c * k).toFixed(2)}" ry="2" fill="${LIGHT}" opacity="${op}" transform="rotate(${rot} ${f(hx)} ${f(hy)})"/>`;
+  };
+  let g = "";
+  g += poly([[t, S - t, 0], [S - t, S - t, 0], [S - t, S - t, H], [t, S - t, H]], "#4b4b4b");     // back wall, inside
+  g += poly([[t, t, 0], [t, S - t, 0], [t, S - t, H], [t, t, H]], "#555555");                     // left wall, inside
+  for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++) {
+    const a = 9 + 12.5 * i, z = 9 + 12.5 * j;
+    g += hole(a, S - t, z, -30, 0.55) + hole(t, a, z, 30, 0.6);
+  }
+  g += poly([[0, 0, H], [S, 0, H], [S, t, H], [0, t, H]], "#6a6a6a");                             // rims
+  g += poly([[S - t, 0, H], [S, 0, H], [S, S, H], [S - t, S, H]], "#6a6a6a");
+  g += poly([[0, S - t, H], [S, S - t, H], [S, S, H], [0, S, H]], "#6a6a6a");
+  g += poly([[0, 0, H], [t, 0, H], [t, S, H], [0, S, H]], "#6a6a6a");
+  g += poly([[0, 0, 0], [S, 0, 0], [S, 0, H], [0, 0, H]], PLASTIC);                               // front, outside
+  g += poly([[S, 0, 0], [S, S, 0], [S, S, H], [S, 0, H]], PLASTIC_SIDE);                          // right, outside
+  for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++) {
+    const a = 9 + 12.5 * i, z = 9 + 12.5 * j;
+    g += hole(a, 0, z, 30, 1) + hole(S, a, z, -30, 0.9);
+  }
+  const [tx, ty] = P(3, 0, 112), [ux, uy] = P(S, 3, 112);
+  g += `<text transform="matrix(${c} ${sn} 0 1 ${f(tx)} ${f(ty)})" style="font:800 7px var(--f-body);fill:#d9d9d9">FRONT XZ ↑</text>`;
+  g += `<text transform="matrix(${c} ${-sn} 0 1 ${f(ux)} ${f(uy)})" style="font:800 7px var(--f-body);fill:#bdbdbd">RIGHT YZ ↑</text>`;
+  return `<svg viewBox="0 0 220 250" role="img" aria-label="Breakaway cube: an open box of four labelled hole-grid walls, with the floor plate inside">${g}</svg>`;
+}
+function sheetSvg() {
+  let g = `<rect x="55" y="8" width="110" height="142" rx="2" fill="#fff" stroke="var(--rule)"/>`;
+  for (let i = 0; i < 9; i++) for (const y of [16, 26, 128, 138]) g += `<rect x="${66 + i * 10}" y="${y}" width="7" height="7" fill="#111"/>`;
+  for (let j = 0; j < 8; j++) for (const x of [66, 146]) g += `<rect x="${x}" y="${36 + j * 11.5}" width="7" height="7" fill="#111"/>`;
+  g += `<rect x="82" y="44" width="56" height="56" rx="2" fill="${PLASTIC}"/>`;
+  for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) g += `<circle cx="${89 + i * 10.5}" cy="${51 + j * 10.5}" r="2" fill="#fff"/>`;
+  return `<svg viewBox="0 0 220 158" role="img" aria-label="Reference sheet: a ring of square markers around the plate">${g}</svg>`;
 }
 function drawGuides() {
-  const S = 170;
-  $("#plateDrawing").innerHTML = `<svg class="chart" viewBox="0 0 360 ${S + 40}" role="img" aria-label="Test plate, top view, origin at front left">
-    <g transform="translate(70 10)">${plateSvg(0, S)}</g>
-    <text x="64" y="${S + 32}" class="t-mark" style="font-size:12px">origin: front left of bed</text>
-    <line x1="70" y1="${S + 16}" x2="${70 + S}" y2="${S + 16}" stroke="var(--muted)"/><text x="${70 + S + 6}" y="${S + 20}">X →</text>
-    <text x="250" y="${S - 4}" style="font-size:11px">red: marker holes</text></svg>`;
-  plateDrawingSvg = $("#plateDrawing").innerHTML;
+  $("#imgThin").innerHTML = plateCardSvg(true);
+  $("#imgStd").innerHTML = plateCardSvg(false);
+  $("#imgCube").innerHTML = cubeSvg();
+  $("#imgSheet").innerHTML = sheetSvg();
   const s2 = 120;
   $("#turnDrawing").innerHTML = `<svg class="chart" viewBox="0 0 380 ${s2 + 46}" role="img" aria-label="Scan once, turn the plate 90 degrees, scan again">
     <defs><marker id="arrT" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker></defs>
-    <g transform="translate(20 8)">${plateSvg(0, s2)}</g>
-    <g transform="translate(240 8)">${plateSvg(90, s2)}</g>
-    <path d="M 160 60 Q 190 30 222 60" fill="none" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrT)"/>
-    <text x="191" y="86" text-anchor="middle" class="t-accent" style="font-size:12px">turn 90°</text>
-    <text x="80" y="${s2 + 34}" text-anchor="middle" class="t-ink">Scan 1</text>
-    <text x="300" y="${s2 + 34}" text-anchor="middle" class="t-ink">Scan 2</text></svg>`;
-}
-let plateVersion = "thinrim";
-function setPlateVersion(v) {
-  plateVersion = v;
-  $("#plateStd").setAttribute("aria-pressed", String(v === "standard"));
-  $("#plateThin").setAttribute("aria-pressed", String(v === "thinrim"));
-  $("#plateCube").setAttribute("aria-pressed", String(v === "cube"));
-  $("#plateDrawing").innerHTML = v === "cube" ? cubeSvg() : plateDrawingSvg;
-  $("#plateSpecs").innerHTML = v === "cube"
-    ? `<div><div class="label">Size</div><div class="v">120 × 120 × 118 mm</div></div>
-       <div><div class="label">Parts</div><div class="v">4 walls + floor plate</div></div>
-       <div><div class="label">Filament</div><div class="v">about 125 g</div></div>
-       <div><div class="label">Fits</div><div class="v">MINI and larger</div></div>`
-    : `<div><div class="label">Size</div><div class="v">114 × 114 × 1.6 mm</div></div>
-       <div><div class="label">Holes</div><div class="v">9 × 9, Ø4 mm</div></div>
-       <div><div class="label">Pitch</div><div class="v">12.5 mm</div></div>
-       <div><div class="label">Fits</div><div class="v">beds ≥ 120 mm</div></div>`;
-  if (v === "cube") {
-    $("#plateNote").textContent = "Measures all three angles in one print: four 118 mm walls printed upright (front/back give X–Z, left/right give Y–Z) and the thin-rim plate as the floor (X–Y). The walls are joined at the corners by small tabs so they print without wobbling; snap them apart afterwards. Print it as exported, with the skew correction off. A few hours of printing.";
-    return;
-  }
-  $("#plateNote").textContent = v === "thinrim"
-    ? "Holes are 4 mm only in the bottom 0.6 mm, then widen to 5.6 mm at the top. The visible hole edge is a thin first-layer rim, so lighting and viewing angle barely move it. Best for phone photos, as good as the standard plate for scans. Photograph it first-layer side down; upside down is corrected automatically."
-    : "The original plate, with straight 4 mm holes. Choose Standard when you measure it.";
-  $("#optPlate").value = v;
-  syncPlane();
+    <g transform="translate(20 8)">${plateSvg(0, s2, { cone: true })}</g>
+    <g transform="translate(240 8)">${plateSvg(90, s2, { cone: true })}</g>
+    <path d="M 160 60 Q 190 30 222 60" fill="none" stroke="var(--accent)" stroke-width="2.5" marker-end="url(#arrT)"/>
+    <text x="191" y="86" text-anchor="middle" class="t-accent" style="font:700 12px var(--f-body)">turn 90°</text>
+    <text x="80" y="${s2 + 34}" text-anchor="middle" class="t-ink" style="font:700 12px var(--f-body)">Scan 1</text>
+    <text x="300" y="${s2 + 34}" text-anchor="middle" class="t-ink" style="font:700 12px var(--f-body)">Scan 2</text></svg>`;
 }
 function syncPlane() { $("#optPlaneWrap").hidden = $("#optPlate").value !== "cubewall"; }
 // remember only the visitor's own choice (samples switch the plate temporarily)
-$("#plateStd").addEventListener("click", () => { setPlateVersion("standard"); store.set("plate", "standard"); });
-$("#plateThin").addEventListener("click", () => { setPlateVersion("thinrim"); store.set("plate", "thinrim"); });
-$("#plateCube").addEventListener("click", () => setPlateVersion("cube"));
 $("#optPlate").addEventListener("change", () => { store.set("plate", $("#optPlate").value); syncPlane(); });
-$("#saveStl").addEventListener("click", () => {
-  const base = { thinrim: "skewcal_plate", standard: "skewcal_plate_standard", cube: "skewcal_cube" }[plateVersion];
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-model]");
+  if (!b) return;
+  const base = b.dataset.model;
   IN_ARTIFACT ? saveAsset(`assets/${base}.zip`, `${base}.zip`) : saveAsset(`assets/${base}.stl`, `${base}.stl`);
 });
-if (!IN_ARTIFACT) $("#stlNote").textContent = "114 × 114 × 1.6 mm, print as exported.";
 $("#sheetButtons").addEventListener("click", (e) => {
   const b = e.target.closest("[data-sheet]");
   if (b) saveAsset(`assets/skewcal_reference_${b.dataset.sheet}.pdf`, `skewcal_reference_${b.dataset.sheet}.pdf`);
@@ -987,8 +989,8 @@ async function boot() {
   setMode(store.get("mode") === "photo" ? "photo" : "scan");
   drawGuides();
   const savedPlate = store.get("plate");
-  setPlateVersion(savedPlate === "standard" ? "standard" : "thinrim");
-  if (savedPlate === "cubewall") { $("#optPlate").value = "cubewall"; syncPlane(); }
+  $("#optPlate").value = ["standard", "cubewall"].includes(savedPlate) ? savedPlate : "thinrim";
+  syncPlane();
   initTablet();
   renderFiles();
   loadSamples();
