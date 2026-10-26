@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`skewcal` measures a 3D printer's XY skew and X/Y scale (the target is a Prusa MINI+) by machine vision instead of calipers. A flat plate with a 9×9 grid of holes is printed, then scanned or photographed. The tool fits the hole centres and outputs the true X–Y angle. `skew_gcode.py` then corrects the skew as a PrusaSlicer post-processing script. Public repo github.com/alighomash/skewcal; every push to main redeploys the web app on GitHub Pages. Validation results and the reasons behind design decisions are in `docs/HISTORY.md`; update it when either changes.
+`skewcal` measures a 3D printer's XY skew and X/Y scale (the target is a Prusa MINI+) by machine vision instead of calipers. A flat plate with a 9×9 grid of holes is printed, then scanned or photographed. The tool fits the hole centres and outputs the true X–Y angle. `skew_gcode.py` then corrects the skew as a PrusaSlicer post-processing script. Public repo github.com/alighomash/skewcal; every push to main redeploys the web app on GitHub Pages.
 
 ## Commands
 
