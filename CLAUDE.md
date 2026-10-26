@@ -12,6 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # + pillow-heif for iPhone .HEIC
 .venv/bin/python tests/run_tests.py      # end-to-end synthetic tests (~20 s); prints PASS/FAIL per case
 python3 tests/test_gcode.py              # post-processor geometry test (stdlib only)
+python3 tests/test_firmware.py           # Klipper/Marlin/RRF skew settings vs each firmware's transform (stdlib only)
 
 .venv/bin/python skewcal.py photo A.HEIC B.HEIC [--span-x 174.0 --span-y 234.0] [--no-warp] [--focal-px F]
 .venv/bin/python skewcal.py scan  S1.png S2.png [--dpi 600]
@@ -52,6 +53,7 @@ The pipeline, mostly in `skewcal/analyze.py`:
   - The analysis is unchanged. `--plane xz|yz` relabels the report and the correction flag, and is required for walls.
   - `skew_gcode.py --xz-angle/--yz-angle` subtracts z·(ezx, ezy) from X/Y before the XY inverse, and adds X/Y to Z-only moves when a shear is active.
   - Within a reversal pair, a wall must be turned, not flipped and turned. That combination doesn't flip the frame-error sign.
+- **Firmware output** (`skewcal/firmware.py`, `skewcal.py firmware`, and the Correct tab in `web/app.js`, which ports the same maths). Klipper and Marlin apply x−y·xy−z(xz−xy·yz), y−z·yz, so xy=cos θ, xz=ezx and yz=ezy/sin θ. RepRapFirmware's M556 adds the terms instead (X→tanXY, Y→tanYZ, Z→tanXZ), so the signs are negated, plus a cross term in tanXZ. Klipper gets the AC/BD/AD of a virtual 100 mm square. Keep the JS and Python versions identical.
 - There are two photo references, the paper sheet (marker ids 0–58) and the tablet screen (ids 59–98, `SCREEN_*` in `sheet.py`). `rectify_phone` picks one from the detected ids. The screen layout is drawn by `web/app.js` from `web/screen_markers.json`, which `build_web.py` exports. Change both together.
 - **Thin-rim plate.** `PlateSpec()` is the default thin-rim plate (rim 0.6, top_d 5.6); `PlateSpec.standard()` has straight holes.
   - `from_json` treats files without a `rim` field as standard, which keeps old plate files valid.

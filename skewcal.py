@@ -68,6 +68,16 @@ def cmd_cube(a):
     print(f"  skewcal.py scan F1.png F2.png B1.png B2.png --plate {js} --plane xz")
 
 
+def cmd_firmware(a):
+    from skewcal.firmware import firmware_commands, NOTES
+    c = firmware_commands(a.xy_angle, a.xz_angle, a.yz_angle)
+    print(f"Skew compensation for XY {a.xy_angle:.4f}, XZ {a.xz_angle:.4f}, YZ {a.yz_angle:.4f} deg.")
+    print("Use firmware compensation OR the skew_gcode.py script, never both.\n")
+    for key, name in (("klipper", "Klipper"), ("marlin", "Marlin"), ("reprap", "RepRapFirmware")):
+        print(f"{name}:\n  {c[key]}\n  ({NOTES[key]})\n")
+    print("The test object must have been printed with firmware skew compensation off.")
+
+
 def _load_spec(a):
     return PlateSpec.from_json(a.plate) if a.plate else PlateSpec()
 
@@ -148,6 +158,16 @@ def format_report(results, names, combined, spec, mode, script_path=None, plane=
         P(f'  /usr/bin/python3 "{script_path}" --{plane}-angle {th:.4f};')
         if plane != "xy":
             P("  (combine with your --xy-angle and the other wall's angle in one line)")
+        from skewcal.firmware import plane_commands, NOTES
+        fw = plane_commands(plane, th)
+        P("")
+        P("Or, if your firmware has skew compensation, use it instead (not both):")
+        P(f"  Klipper:         {fw['klipper']}")
+        P(f"                   ({NOTES['klipper']})")
+        P(f"  Marlin:          {fw['marlin']}   ({NOTES['marlin']})")
+        P(f"  RepRapFirmware:  {fw['reprap']}   ({NOTES['reprap']})")
+        P("  Print the test object with firmware skew compensation off. To combine several measured")
+        P("  angles exactly, run: skewcal.py firmware --xy-angle .. --xz-angle .. --yz-angle ..")
     P("=" * 72)
     return "\n".join(lines)
 
@@ -217,6 +237,11 @@ def main(argv=None):
     p = sub.add_parser("cube", help="generate the breakaway cube (X-Z, Y-Z walls + XY floor plate)")
     p.add_argument("-o", "--output", default="skewcal_cube.stl")
 
+    p = sub.add_parser("firmware", help="firmware skew settings (Klipper, Marlin, RepRapFirmware) for measured angles")
+    p.add_argument("--xy-angle", type=float, default=90.0)
+    p.add_argument("--xz-angle", type=float, default=90.0)
+    p.add_argument("--yz-angle", type=float, default=90.0)
+
     p = sub.add_parser("sheet", help="generate the phone reference sheet (PDF)")
     p.add_argument("--page", choices=["letter", "a4"], default="letter")
     p.add_argument("--dark", action="store_true", help="black window, for light-coloured plates")
@@ -251,6 +276,8 @@ def main(argv=None):
         cmd_plate(a)
     elif a.cmd == "cube":
         cmd_cube(a)
+    elif a.cmd == "firmware":
+        cmd_firmware(a)
     elif a.cmd == "sheet":
         cmd_sheet(a)
     else:

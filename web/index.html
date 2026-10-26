@@ -249,6 +249,8 @@ ul.rules li::marker { color: var(--accent); }
 .cmd { display: flex; gap: 8px; align-items: stretch; }
 .cmd code { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 6px; background: var(--bar); color: #f3f3f3; overflow-x: auto; white-space: nowrap; font-size: 0.84rem; }
 
+.fw { display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--rule); }
+
 /* ---------- footer ---------- */
 .foot { background: var(--bar); color: var(--bar-muted); font-size: 0.84rem; }
 .foot .wrap { padding-block: 22px calc(22px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 10px 24px; flex-wrap: wrap; justify-content: space-between; }
@@ -548,6 +550,25 @@ ul.rules li::marker { color: var(--accent); }
         </label>
         <div class="progress" id="gProgress" hidden><div></div></div>
         <p class="note" id="gNote"></p>
+      </div>
+    </div>
+    <div class="card stack" style="margin-top:20px">
+      <header><h3>Firmware skew compensation</h3></header>
+      <p>If your firmware supports skew compensation, use it <strong>instead of</strong> the script, never both; otherwise the skew is corrected twice. The values are computed from the angles above and checked against each firmware's own correction code. The test object must have been printed with firmware compensation turned off.</p>
+      <div class="fw">
+        <div class="label">Klipper</div>
+        <div class="cmd"><code id="fwKlipper"></code><button class="btn small" data-copy="fwKlipper">Copy</button></div>
+        <p class="note">Needs a <code>[skew_correction]</code> section in printer.cfg. Run the command, then <code>SKEW_PROFILE SAVE=skewcal</code> and <code>SAVE_CONFIG</code>. Klipper starts with no skew, so add <code>SKEW_PROFILE LOAD=skewcal</code> to your print start macro.</p>
+      </div>
+      <div class="fw">
+        <div class="label">Marlin</div>
+        <div class="cmd"><code id="fwMarlin"></code><button class="btn small" data-copy="fwMarlin">Copy</button></div>
+        <p class="note">Only if the firmware was built with <code>SKEW_CORRECTION_GCODE</code> (and <code>SKEW_CORRECTION_FOR_Z</code> for the J/K values). Send it, then <code>M500</code> to store it.</p>
+      </div>
+      <div class="fw">
+        <div class="label">RepRapFirmware (Duet)</div>
+        <div class="cmd"><code id="fwReprap"></code><button class="btn small" data-copy="fwReprap">Copy</button></div>
+        <p class="note">Add the line to <code>config.g</code>.</p>
       </div>
     </div>
   </section>

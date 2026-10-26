@@ -170,6 +170,22 @@ In **Print Settings → Output options → Post-processing scripts**, add the li
 - The slicer's preview still shows the uncorrected paths; only the exported file changes.
 - Check the fix: print the plate again with the script enabled and measure it. The XY angle should now be within about ±0.02° of 90.
 
+### Firmware skew compensation (instead of the script)
+
+Klipper, Marlin and RepRapFirmware can compensate skew themselves. Use that **or** the post-processing script, never both. The skewcal report prints the firmware commands for the angle it measured. To combine several measured angles exactly:
+
+```bash
+.venv/bin/python skewcal.py firmware --xy-angle 89.7220 --xz-angle 89.8200 --yz-angle 90.1200
+```
+
+| Firmware | Command (example) | Notes |
+|---|---|---|
+| Klipper | `SET_SKEW XY=141.7640,141.0779,100.0000 XZ=… YZ=…` | Needs `[skew_correction]` in printer.cfg. Then `SKEW_PROFILE SAVE=skewcal` and `SAVE_CONFIG`, and `SKEW_PROFILE LOAD=skewcal` in your print start macro (Klipper starts with no skew). |
+| Marlin | `M852 I0.004852 J… K…` | Needs a build with `SKEW_CORRECTION_GCODE` (and `SKEW_CORRECTION_FOR_Z` for J/K). Then `M500`. |
+| RepRapFirmware | `M556 S100 X-0.4852 Y… Z…` | Add to `config.g`. Its sign convention is the opposite of Klipper's and Marlin's. |
+
+The Klipper values are the diagonals and side of a virtual 100 mm square with the measured angle, which Klipper converts back into its skew factor. `tests/test_firmware.py` applies each firmware's own correction (transcribed from its source) to the printed commands and checks that a skewed printer then prints square. The remaining error is the tiny shortening of a leaning axis, about 2 µm over 180 mm. The test object must be printed with firmware compensation turned off.
+
 ## 6. Measure X–Z and Y–Z skew (breakaway cube)
 
 XY skew is how far X and Y are from square. A leaning Z axis gives **X–Z** and **Y–Z** skew instead: tall parts lean as they rise. On a MINI+ this is the single Z column not being exactly vertical.
@@ -230,6 +246,7 @@ Run the checks yourself:
 ```bash
 .venv/bin/python tests/run_tests.py     # end-to-end, synthetic scans and photos
 python3 tests/test_gcode.py             # post-processor geometry check
+python3 tests/test_firmware.py          # firmware skew settings, checked with each firmware's own transform
 ```
 
 ## About the iPhone LiDAR
@@ -245,6 +262,7 @@ The LiDAR isn't useful here. Its depth map is about 256 × 192 points with milli
 | `skewcal/sheet.py` | ArUco reference layouts: the paper sheet (PDF) and the tablet screen |
 | `skewcal/analyze.py` | hole detection, grid fit, rectification, reversal maths |
 | `skew_gcode.py` | PrusaSlicer post-processor for XY, XZ and YZ skew (standard library only) |
+| `skewcal/firmware.py` | Klipper / Marlin / RepRapFirmware skew settings (`skewcal.py firmware`) |
 | `skewcal_plate.stl` / `.json` | default (thin-rim) test plate and its parameters |
 | `skewcal_plate_standard.stl` / `.json` | original plate with straight holes (`--plate skewcal_plate_standard.json`) |
 | `skewcal_cube.stl`, `skewcal_cube_wall.json` | breakaway cube for X–Z / Y–Z (+ XY floor) and its wall plate parameters |

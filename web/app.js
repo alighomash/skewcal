@@ -739,7 +739,46 @@ function corFlags() {
   }
   return out.length ? out.join(" ") : "--xy-angle 90.0000";
 }
+// Firmware skew settings: same maths as skewcal/firmware.py (tested against each
+// firmware's transform in tests/test_firmware.py)
+function fwCommands(xyA, xzA, yzA, L = 100) {
+  const rad = (d) => (d * Math.PI) / 180;
+  const t = rad(xyA), ezx = Math.cos(rad(xzA));
+  const ezy = (Math.cos(rad(yzA)) - Math.cos(t) * ezx) / Math.sin(t);
+  const xy = Math.cos(t), xz = ezx, yz = ezy / Math.sin(t);                // Klipper / Marlin
+  const tyz = -ezy / Math.sin(t), txz = -ezx - Math.cos(t) * tyz, txy = -Math.cos(t);   // RepRapFirmware
+  const num = (v, d) => { const s = (v + 0).toFixed(d); return /^-0\.0+$/.test(s) ? s.slice(1) : s; };
+  const lengths = (f) => {
+    const psi = Math.atan2(1, f);
+    return [L * Math.sqrt(2 + 2 * Math.cos(psi)), L * Math.sqrt(2 - 2 * Math.cos(psi)), L];
+  };
+  const hasZ = Math.abs(xzA - 90) > 1e-9 || Math.abs(yzA - 90) > 1e-9;
+  return {
+    klipper: "SET_SKEW " + [["XY", xy], ["XZ", xz], ["YZ", yz]].map(([n, f]) => `${n}=${lengths(f).map((v) => num(v, 4)).join(",")}`).join(" "),
+    marlin: `M852 I${num(xy, 6)}` + (hasZ ? ` J${num(xz, 6)} K${num(yz, 6)}` : ""),
+    reprap: `M556 S${L} X${num(L * txy, 4)} Y${num(L * tyz, 4)} Z${num(L * txz, 4)}`,
+  };
+}
+function updateFirmware() {
+  const c = fwCommands(angleOf("#corAngle") ?? 90, angleOf("#corXz") ?? 90, angleOf("#corYz") ?? 90);
+  $("#fwKlipper").textContent = c.klipper;
+  $("#fwMarlin").textContent = c.marlin;
+  $("#fwReprap").textContent = c.reprap;
+}
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-copy]");
+  if (!b) return;
+  const el = document.getElementById(b.dataset.copy);
+  try { await navigator.clipboard.writeText(el.textContent); toast("Copied"); }
+  catch {
+    const r = document.createRange(); r.selectNodeContents(el);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    toast("Press Ctrl+C or ⌘C to copy");
+  }
+});
+
 function updateCmd() {
+  updateFirmware();
   const c = corCentre();
   const centre = c && !(c[0] === 90 && c[1] === 90) ? ` --center ${c[0]},${c[1]}` : "";
   $("#cmdLine").textContent = state.os === "mac"
